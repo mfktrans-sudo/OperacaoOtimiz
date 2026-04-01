@@ -1,13 +1,2801 @@
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LOGIX v11 — Otimizador de Cargas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=Outfit:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d0f14;
+  --surface: #13161e;
+  --surface2: #1a1e29;
+  --surface3: #21263a;
+  --border: #252c3f;
+  --border2: #2e3654;
+  --accent: #6366f1;
+  --accent2: #4f52cc;
+  --accent-glow: rgba(99,102,241,0.15);
+  --gold: #ffb800;
+  --gold-glow: rgba(255,184,0,0.15);
+  --green: #00e676;
+  --red: #ff3d5a;
+  --purple: #bd93f9;
+  --orange: #ff9800;
+  --text: #e8ecf5;
+  --text2: #7a8299;
+  --text3: #3d4560;
+  --mono: 'DM Mono', monospace;
+  --sans: 'Outfit', sans-serif;
+  --cond: 'Bebas Neue', cursive;
+  --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; overflow-x: hidden; font-size: 14px; }
+body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; opacity: 0.4; }
 
+/* ─── TOPBAR ─── */
+.topbar { position: sticky; top: 0; z-index: 200; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; height: 56px; background: rgba(13,15,20,0.97); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); }
+.logo { display: flex; align-items: center; gap: 12px; font-family: var(--cond); font-size: 20px; letter-spacing: 0.08em; }
+.logo-mark { width: 32px; height: 32px; background: var(--accent); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 15px; box-shadow: 0 0 16px var(--accent-glow); }
+.logo-sub { font-family: var(--mono); font-size: 8px; color: var(--text3); letter-spacing: 0.2em; margin-top: 2px; }
+.topbar-status { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); transition: all .3s; }
+.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+/* ─── WIZARD STEPS ─── */
+.wizard-bar { display: flex; align-items: center; gap: 0; padding: 0 20px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; }
+.wstep { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text3); transition: all .2s; white-space: nowrap; border: 1px solid transparent; }
+.wstep .wnum { width: 20px; height: 20px; border-radius: 50%; background: var(--border2); color: var(--text3); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; font-weight: 700; flex-shrink: 0; transition: all .2s; }
+.wstep.active { color: var(--accent); border-color: rgba(99,102,241,.25); background: var(--accent-glow); }
+.wstep.active .wnum { background: var(--accent); color: #000; }
+.wstep.done { color: var(--green); }
+.wstep.done .wnum { background: var(--green); color: #000; }
+.wstep.locked { opacity: 0.4; cursor: not-allowed; }
+.wstep-arrow { color: var(--text3); font-size: 14px; padding: 0 4px; flex-shrink: 0; }
+
+/* ─── LAYOUT ─── */
+.layout { display: flex; min-height: calc(100vh - 104px); position: relative; z-index: 1; }
+.sidebar { width: 60px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 3px; position: sticky; top: 104px; height: calc(100vh - 104px); overflow-y: auto; flex-shrink: 0; }
+.sicon { width: 42px; height: 42px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 17px; cursor: pointer; transition: all .15s; color: var(--text3); position: relative; }
+.sicon:hover { background: var(--surface2); color: var(--text2); }
+.sicon.act { background: var(--accent-glow); color: var(--accent); }
+.sicon .sbadge { position: absolute; top: 4px; right: 4px; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); color: #000; font-size: 7px; font-weight: 700; display: flex; align-items: center; justify-content: center; font-family: var(--mono); }
+.sep { width: 30px; height: 1px; background: var(--border); margin: 6px 0; }
+.content { flex: 1; padding: 28px; overflow-y: auto; max-width: 100%; }
+.page { display: none; animation: fadeIn .2s ease; }
+.page.act { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ─── PAGE HEADER ─── */
+.ph { margin-bottom: 24px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.ph-tag { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; color: var(--accent); background: var(--accent-glow); border: 1px solid rgba(99,102,241,.2); padding: 3px 10px; border-radius: 5px; letter-spacing: 0.12em; margin-bottom: 8px; }
+.ph-title { font-family: var(--cond); font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; color: var(--text); }
+.ph-sub { font-size: 13px; color: var(--text2); margin-top: 6px; }
+
+/* ─── CARDS ─── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.card-title { font-family: var(--cond); font-size: 13px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 8px; }
+.card-title .dot-accent { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; }
+
+/* ─── UPLOAD ZONE ─── */
+.upload-zone { border: 2px dashed var(--border2); border-radius: 12px; padding: 56px 40px; text-align: center; cursor: pointer; transition: all .2s; background: var(--surface2); position: relative; }
+.upload-zone:hover, .upload-zone.over { border-color: var(--accent); background: var(--accent-glow); }
+.upload-zone input { display: none; }
+.upload-icon { font-size: 48px; margin-bottom: 14px; filter: drop-shadow(0 0 12px var(--accent)); }
+.upload-title { font-family: var(--cond); font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+.upload-sub { font-size: 13px; color: var(--text2); }
+.upload-sub b { color: var(--accent); }
+
+/* ─── BUTTONS ─── */
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 8px; font-family: var(--sans); font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: all .15s; }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover { background: var(--accent2); transform: translateY(-1px); box-shadow: 0 4px 16px var(--accent-glow); }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+.btn-gold { background: var(--gold); color: #000; }
+.btn-gold:hover { background: #e0a300; transform: translateY(-1px); }
+.btn-danger { background: rgba(255,61,90,.12); color: var(--red); border: 1px solid rgba(255,61,90,.2); }
+.btn-danger:hover { background: rgba(255,61,90,.2); }
+.btn-success { background: rgba(0,230,118,.12); color: var(--green); border: 1px solid rgba(0,230,118,.2); }
+.btn-success:hover { background: rgba(0,230,118,.2); }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-lg { padding: 12px 24px; font-size: 14px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+.flex { display: flex; align-items: center; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mt-20 { margin-top: 20px; }
+.w-full { width: 100%; }
+
+/* ─── INPUTS ─── */
+.fg { margin-bottom: 14px; }
+.fg:last-child { margin-bottom: 0; }
+.flabel { display: block; font-family: var(--mono); font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 7px; }
+.finput, .fselect { width: 100%; background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 9px 13px; font-family: var(--sans); font-size: 13px; color: var(--text); outline: none; transition: border-color .15s; }
+.finput:focus, .fselect:focus { border-color: var(--accent); }
+.finput::placeholder { color: var(--text3); }
+.frow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.frow-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.frow-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+
+/* ─── TABLE ─── */
+.tw { overflow-x: auto; border-radius: 9px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: var(--surface2); padding: 9px 12px; text-align: left; font-family: var(--mono); font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; }
+td { padding: 9px 12px; border-bottom: 1px solid rgba(37,44,63,.5); vertical-align: middle; white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(99,102,241,.03); }
+tr.fixo-row td { background: rgba(255,184,0,.04); }
+tr.fixo-row:hover td { background: rgba(255,184,0,.07); }
+tr.erro-row td { background: rgba(255,61,90,.06) !important; }
+
+/* ─── BADGES ─── */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 5px; font-size: 10px; font-weight: 700; font-family: var(--mono); white-space: nowrap; }
+.bg-cyan { background: rgba(99,102,241,.15); color: var(--accent); }
+.bg-gold { background: rgba(255,184,0,.15); color: var(--gold); }
+.bg-green { background: rgba(0,230,118,.12); color: var(--green); }
+.bg-red { background: rgba(255,61,90,.12); color: var(--red); }
+.bg-purple { background: rgba(189,147,249,.12); color: var(--purple); }
+.bg-orange { background: rgba(255,152,0,.12); color: var(--orange); }
+.bg-gray { background: var(--border); color: var(--text2); }
+
+/* ─── STAT CARDS ─── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+.stat-lbl { font-family: var(--mono); font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+.stat-val { font-family: var(--cond); font-size: 30px; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+.stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+/* ─── DOCA BLOCKS ─── */
+.docas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.doca-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color .2s; }
+.doca-hdr { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; background: var(--surface2); border-bottom: 1px solid var(--border); }
+.doca-num { font-family: var(--cond); font-size: 24px; font-weight: 800; color: var(--accent); line-height: 1; }
+.doca-lbl { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: .1em; }
+.doca-stats { display: flex; gap: 5px; flex-wrap: wrap; }
+.doca-body { padding: 10px; }
+.doca-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 9px; border-radius: 7px; margin-bottom: 3px; background: rgba(255,255,255,.02); font-size: 11px; border: 1px solid transparent; transition: all .15s; }
+.doca-row.fixo { border-color: rgba(255,184,0,.2); background: rgba(255,184,0,.04); }
+.doca-row-name { font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 5px; }
+.doca-row-info { display: flex; gap: 5px; align-items: center; }
+.doca-bar-wrap { height: 3px; background: var(--border); border-radius: 99px; overflow: hidden; margin-top: 10px; }
+.doca-bar { height: 100%; background: var(--accent); border-radius: 99px; transition: width .5s; }
+.doca-bar.warn { background: var(--red); }
+.onda-sep { font-family: var(--mono); font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .1em; padding: 5px 0 3px; border-top: 1px solid var(--border); margin-top: 5px; }
+
+/* ─── TOAST ─── */
+#toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast-item { background: var(--surface); border: 1px solid var(--border2); border-radius: 9px; padding: 11px 16px; font-size: 13px; font-weight: 600; box-shadow: 0 8px 32px rgba(0,0,0,.5); animation: tIn .3s ease; min-width: 240px; }
+.toast-item.ok { border-color: rgba(0,230,118,.3); }
+.toast-item.err { border-color: rgba(255,61,90,.3); }
+@keyframes tIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ─── EMAIL PREVIEW ─── */
+.email-pre { background: var(--surface2); border: 1px solid var(--border2); border-radius: 9px; padding: 18px; font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--text); max-height: 480px; overflow-y: auto; white-space: pre; }
+
+/* ─── EMPTY ─── */
+.empty { text-align: center; padding: 48px 24px; color: var(--text3); }
+.empty-icon { font-size: 38px; margin-bottom: 12px; filter: grayscale(1) opacity(.4); }
+.empty-title { font-family: var(--cond); font-size: 18px; font-weight: 700; color: var(--text2); margin-bottom: 6px; }
+.empty-sub { font-size: 13px; }
+
+/* ─── LACRE EDITOR ─── */
+.lacre-input { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 3px 7px; font-size: 11px; font-family: var(--mono); color: var(--text); width: 110px; transition: all .15s; }
+.lacre-input:focus { background: var(--surface2); border-color: var(--accent); outline: none; }
+.lacre-input::placeholder { color: var(--text3); }
+.lacre-input.filled-bau { border-color: rgba(255,184,0,.4) !important; background: rgba(255,184,0,.06) !important; }
+.lacre-input.filled-lv  { border-color: rgba(99,102,241,.4) !important; background: rgba(99,102,241,.06) !important; }
+.lacre-input.missing    { border-color: rgba(255,61,90,.6) !important; background: rgba(255,61,90,.08) !important; }
+
+/* ─── BAU PANEL ─── */
+.bau-panel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.bau-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; }
+.bau-label { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; color: var(--text); flex: 1; }
+
+/* ─── LACRE FLOW MODAL ─── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 5000; display: none; align-items: center; justify-content: center; padding: 20px; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: var(--surface); border: 1px solid var(--border2); border-radius: 14px; padding: 28px; max-width: 560px; width: 100%; max-height: 80vh; overflow-y: auto; }
+.modal-title { font-family: var(--cond); font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+.modal-sub { font-size: 12px; color: var(--text2); margin-bottom: 20px; }
+
+/* ─── PROGRESS ─── */
+.prog-bar { height: 3px; background: var(--border); border-radius: 99px; overflow: hidden; margin-bottom: 16px; }
+.prog-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s; }
+
+/* ─── ALERT BOX ─── */
+.alert { padding: 12px 16px; border-radius: 9px; font-size: 12px; margin-bottom: 12px; display: flex; gap: 10px; align-items: flex-start; }
+.alert-err { background: rgba(255,61,90,.1); border: 1px solid rgba(255,61,90,.25); color: var(--red); }
+.alert-warn { background: rgba(255,152,0,.1); border: 1px solid rgba(255,152,0,.25); color: var(--orange); }
+.alert-ok { background: rgba(0,230,118,.08); border: 1px solid rgba(0,230,118,.2); color: var(--green); }
+.alert-info { background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.2); color: var(--accent); }
+
+/* ─── CONFIG GRID ─── */
+.cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .cfg-grid { grid-template-columns: 1fr; } .frow-4 { grid-template-columns: 1fr 1fr; } }
+
+/* ─── HISTORICO ─── */
+.hist-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; cursor: pointer; transition: all .15s; }
+.hist-card:hover { border-color: var(--border2); background: var(--surface2); }
+.hist-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.hist-date { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.hist-title { font-weight: 700; font-size: 13px; color: var(--text); }
+.hist-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* ─── HELP TEXT ─── */
+.help { font-size: 11px; color: var(--text3); margin-top: 5px; line-height: 1.5; }
+
+/* ─── ICON BTN ─── */
+.ibtn { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 13px; padding: 4px 6px; border-radius: 5px; transition: all .15s; }
+.ibtn:hover { color: var(--red); background: rgba(255,61,90,.1); }
+
+/* ondas color */
+.onda1 { background: rgba(0,230,118,.12); color: var(--green); }
+.onda2 { background: rgba(99,102,241,.15); color: var(--accent); }
+.onda3 { background: rgba(189,147,249,.12); color: var(--purple); }
+.onda4 { background: rgba(255,152,0,.12); color: var(--orange); }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">🚛</div>
+    <div>
+      <div>LOGIX <span style="color:var(--accent)">OPTIMIZER</span></div>
+      <div class="logo-sub" style="color:var(--accent)">v11 · 2026 · SEQUÊNCIA DE ENTREGA + VALIDAÇÃO TS</div>
+    </div>
+  </div>
+  <div class="topbar-status">
+    <div class="dot" id="dot"></div>
+    <span id="statusTxt">Aguardando upload</span>
+  </div>
+</div>
+
+<!-- WIZARD BAR -->
+<div class="wizard-bar">
+  <div class="wstep active" id="ws1" onclick="wizNav(1)">
+    <span class="wnum">1</span> Configurar Docas
+  </div>
+  <span class="wstep-arrow">›</span>
+  <div class="wstep locked" id="ws2" onclick="wizNav(2)">
+    <span class="wnum">2</span> Upload de Arquivo
+  </div>
+  <span class="wstep-arrow">›</span>
+  <div class="wstep locked" id="ws3" onclick="wizNav(3)">
+    <span class="wnum">3</span> Revisar e Otimizar
+  </div>
+  <span class="wstep-arrow">›</span>
+  <div class="wstep locked" id="ws4" onclick="wizNav(4)">
+    <span class="wnum">4</span> Lacres
+  </div>
+  <span class="wstep-arrow">›</span>
+  <div class="wstep locked" id="ws5" onclick="wizNav(5)">
+    <span class="wnum">5</span> Otimização Finalizada
+  </div>
+  <div style="margin-left:auto;display:flex;gap:6px;padding-left:16px;border-left:1px solid var(--border);">
+    <button class="btn btn-ghost btn-sm" onclick="nav('motoristas')">⭐ Fixos <span class="badge bg-gray" id="nmot">0</span></button>
+    <button class="btn btn-ghost btn-sm" onclick="nav('config')">⚙️ Config</button>
+    <button class="btn btn-ghost btn-sm" onclick="abrirGerenciarSenha()" title="Gerenciar senha de exclusão">🔐 Senha</button>
+    <button class="btn btn-ghost btn-sm" onclick="nav('historico')">📁 Histórico</button>
+  </div>
+</div>
+
+<div class="layout">
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sicon act" onclick="wizNav(1)" id="s-step1" title="Passo 1 - Docas">🏭</div>
+  <div class="sicon" onclick="wizNav(2)" id="s-step2" title="Passo 2 - Upload">📤</div>
+  <div class="sicon" onclick="wizNav(3)" id="s-step3" title="Passo 3 - Revisar">⚡</div>
+  <div class="sicon" onclick="wizNav(4)" id="s-step4" title="Passo 4 - Lacres">🔐</div>
+  <div class="sicon" onclick="wizNav(5)" id="s-step5" title="Passo 5 - Finalizado">✅</div>
+  <div class="sep"></div>
+  <div class="sicon" onclick="nav('motoristas')" id="s-motoristas" title="Motoristas Fixos">⭐<span class="sbadge" id="smot" style="display:none">0</span></div>
+  <div class="sicon" onclick="nav('config')" id="s-config" title="Configurações">⚙️</div>
+  <div class="sicon" onclick="nav('historico')" id="s-historico" title="Histórico">📁</div>
+  <div class="sep"></div>
+  <div class="sicon" onclick="downloadExcel()" title="Baixar Excel">💾</div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+<!-- ══════ PAGE 1: CONFIGURAÇÃO DE DOCAS ══════ -->
+<div class="page act" id="page-step1">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● PASSO 1 — CONFIGURAÇÃO</div>
+      <div class="ph-title">Docas Disponíveis</div>
+      <div class="ph-sub">Informe quais docas estarão disponíveis para carregamento hoje</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title"><span class="dot-accent"></span> Selecionar Docas</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="badge bg-cyan" id="docaDispCount">0 docas</span>
+        <button class="btn btn-ghost btn-sm" onclick="selecionarTodasDocas()">✅ Todas</button>
+        <button class="btn btn-ghost btn-sm" onclick="deselecionarTodasDocas()">⬜ Nenhuma</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;" id="docasPresetGrid"></div>
+    <div style="border-top:1px solid var(--border);padding-top:14px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+      <div class="fg" style="margin-bottom:0;flex:0 0 auto;">
+        <label class="flabel">Adicionar doca extra</label>
+        <input class="finput" id="docaNovaInput" placeholder="ex: 170" onkeydown="if(event.key==='Enter')addDocaDisp()" style="width:140px;">
+      </div>
+      <button class="btn btn-accent btn-sm" onclick="addDocaDisp()" style="height:36px">➕ Adicionar</button>
+    </div>
+    <div class="help mt-12">💡 As docas dos motoristas fixos são incluídas automaticamente na otimização.</div>
+  </div>
+
+  <div class="card" style="background:rgba(99,102,241,.04);border-color:rgba(99,102,241,.2);">
+    <div class="card-title" style="margin-bottom:14px;color:var(--accent)">⚙️ Parâmetros de Distribuição</div>
+    <div class="fg" style="margin-bottom:0;">
+      <label class="flabel">Quantidade de ondas para motoristas variáveis</label>
+      <input class="finput" id="ondasSel" type="number" min="1" max="10" value="3" placeholder="ex: 3" style="max-width:160px;">
+      <div class="help" style="margin-top:6px;">Os motoristas fixos sempre ficam na 1ª onda. Os variáveis serão distribuídos pelas ondas seguintes.</div>
+    </div>
+  </div>
+
+  <input type="hidden" id="critSel" value="volumes">
+  <input type="hidden" id="maxVol" value="0">
+  <input type="hidden" id="maxNF" value="0">
+
+  <div style="display:flex;gap:12px;margin-top:4px;">
+    <button class="btn btn-accent btn-lg" onclick="confirmarDocasDisp()" style="flex:1;justify-content:center;">
+      ✅ Confirmar Docas — Avançar para Upload →
+    </button>
+  </div>
+</div>
+
+<!-- ══════ PAGE 2: UPLOAD ══════ -->
+<div class="page" id="page-step2">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● PASSO 2 — ENTRADA DE DADOS</div>
+      <div class="ph-title">Upload da Lista de Carga</div>
+      <div class="ph-sub">Importe o arquivo Excel recebido por e-mail para iniciar o processamento</div>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-danger btn-sm" onclick="confirmarLimparTudo()" title="Limpa todos os dados e reinicia o processo">🔄 Limpar Todos os Dados</button>
+      <button class="btn btn-ghost btn-sm" onclick="wizNav(1)">← Voltar para Docas</button>
+    </div>
+  </div>
+
+  <div id="docasResumoUpload" class="card" style="background:rgba(99,102,241,.04);border-color:rgba(99,102,241,.2);display:none;margin-bottom:16px;">
+    <div class="card-title" style="color:var(--accent);margin-bottom:8px;">🏭 Docas configuradas para hoje</div>
+    <div id="docasResumoUploadList" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fi').click()">
+      <input type="file" id="fi" accept=".xlsx,.xls" onchange="handleFile(event)">
+      <div class="upload-icon">📊</div>
+      <div class="upload-title">Solte o arquivo aqui ou clique para selecionar</div>
+      <div class="upload-sub">Formatos aceitos: <b>.xlsx</b> · <b>.xls</b></div>
+    </div>
+    <div class="help mt-12">💡 Colunas reconhecidas: DATA · SEQ. · LOJA · PRÉ-05 · PRÉ-ROMANEIO · QTD NF · VOLUMES · CUB · TIPO · MOTORISTA · RG · CPF · PLACA · TELEFONE · LACRE-LV · LACRE-BAÚ</div>
+  </div>
+
+  <!-- TS UPLOAD ZONE -->
+  <div class="card" style="margin-top:16px;background:rgba(189,147,249,.04);border-color:rgba(189,147,249,.2);">
+    <div class="card-head">
+      <div class="card-title"><span style="width:8px;height:8px;background:var(--purple);border-radius:50%;display:inline-block"></span> Upload do Arquivo TS — Sequência de Entregas</div>
+      <div class="flex gap-8">
+        <span class="badge" id="tsBadge" style="background:rgba(189,147,249,.15);color:var(--purple);display:none">✅ TS carregado</span>
+        <button class="btn btn-ghost btn-sm" id="tsClearBtn" onclick="clearTS()" style="display:none;">🗑 Limpar TS</button>
+      </div>
+    </div>
+    <div class="upload-zone" id="tsUploadZone" onclick="document.getElementById('tsFi').click()" style="padding:28px 40px;border-color:rgba(189,147,249,.3);">
+      <input type="file" id="tsFi" accept=".xlsx,.xls" onchange="handleTSFile(event)">
+      <div class="upload-icon" style="font-size:32px;margin-bottom:10px;">🗂️</div>
+      <div class="upload-title" style="font-size:15px;">Arquivo TS — Planilha de Sequência</div>
+      <div class="upload-sub">Carregue o arquivo TS com a aba <b>OTIMIZ</b> para definir a sequência de entregas dos motoristas</div>
+    </div>
+    <div id="tsPreviewSec" style="display:none;margin-top:14px;">
+      <div class="alert alert-ok" style="margin-bottom:10px;">
+        <span>✅</span>
+        <span id="tsPreviewMsg">TS carregado com sucesso!</span>
+      </div>
+      <div class="tw" id="tsPreviewTable" style="max-height:220px;overflow-y:auto;"></div>
+    </div>
+    <div class="help mt-12">💡 A ferramenta lê a aba <b>OTIMIZ</b> do arquivo TS — colunas A e B (SEQ. e LOJA) — e monta automaticamente a <b>sequência de entregas</b> no Passo 5 · Motoristas com Múltiplas Entregas.</div>
+  </div>
+
+  <div id="previewSec" style="display:none;">
+    <div class="stats-grid" id="uploadStats"></div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><span class="dot-accent"></span> Pré-visualização · Dados Tratados</div>
+        <div class="flex gap-8">
+          <span class="badge bg-green" id="uploadBadge">0 registros</span>
+          <button class="btn btn-ghost btn-sm" onclick="clearFile()">🗑 Limpar</button>
+        </div>
+      </div>
+      <div class="tw" id="previewTable"></div>
+      <div id="uploadBlockAlert" class="alert alert-warn" style="display:none;margin-top:14px;">
+        <span>⚠️</span>
+        <span>Para avançar é necessário carregar <b>ambos os arquivos</b>: a Lista de Cargas <b>e</b> o Arquivo TS de Sequência.</span>
+      </div>
+      <div class="flex gap-12 mt-16">
+        <button class="btn btn-accent btn-lg" onclick="avancarParaOtimizacao()">⚡ Avançar para Otimização →</button>
+        <button class="btn btn-ghost" onclick="clearFile()">🗑 Limpar Arquivo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ PAGE 3: REVISAR E OTIMIZAR ══════ -->
+<div class="page" id="page-step3">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● PASSO 3 — REVISÃO</div>
+      <div class="ph-title">Revisar e Otimizar</div>
+      <div class="ph-sub">Confira os dados e execute a distribuição automática. Após a otimização, insira os lacres.</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="wizNav(2)">← Voltar para Upload</button>
+  </div>
+
+  <div id="otimEmpty" class="empty" style="display:none;">
+    <div class="empty-icon">📤</div>
+    <div class="empty-title">Nenhuma planilha carregada</div>
+    <div class="empty-sub">Faça o upload primeiro</div>
+    <div class="mt-16"><button class="btn btn-accent" onclick="wizNav(2)">📤 Upload</button></div>
+  </div>
+
+  <div id="otimReady" style="display:none;">
+    <div id="otimDocasInfo" class="card" style="background:rgba(99,102,241,.04);border-color:rgba(99,102,241,.2);margin-bottom:16px;"></div>
+    <div id="motFixosInfo" style="margin-bottom:16px;"></div>
+    <div class="stats-grid" id="otimStats"></div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-head">
+        <div class="card-title"><span class="dot-accent"></span> Dados para Otimização</div>
+        <div class="flex gap-8">
+          <input class="finput" style="width:180px;padding:6px 10px;font-size:11px;" id="otimFiltro" placeholder="🔍 Filtrar..." oninput="filtrarOtimPreview()">
+          <span class="badge bg-green" id="otimBadge">0 registros</span>
+        </div>
+      </div>
+      <div class="tw" id="otimPreviewTable"></div>
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:16px;">
+      <span>🔐</span>
+      <span>Após a otimização você será direcionado para o Passo 4 onde deverá inserir os lacres <b>LV (por loja)</b> e <b>BAÚ (por motorista)</b> — obrigatório para finalizar.</span>
+    </div>
+
+    <button class="btn btn-accent btn-lg w-full" onclick="executarOtimizacao()" style="justify-content:center;font-size:15px;padding:14px;">
+      🚀 Otimizar Docas — Ir para Lacres →
+    </button>
+  </div>
+</div>
+
+<!-- ══════ PAGE 4: LACRES ══════ -->
+<div class="page" id="page-step4">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● PASSO 4 — LACRES (OBRIGATÓRIO)</div>
+      <div class="ph-title">Inserção de Lacres</div>
+      <div class="ph-sub">Preencha todos os lacres LV (por loja) e BAÚ (por motorista) antes de finalizar</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="wizNav(3)">← Voltar</button>
+  </div>
+
+  <!-- FASE INDICATOR -->
+  <div class="card" id="lacrePhaseCard" style="background:rgba(99,102,241,.04);border-color:rgba(99,102,241,.2);margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div id="phaseIndicatorLV" style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:9px;border:1.5px solid rgba(99,102,241,.5);background:var(--accent-glow);">
+        <span style="font-size:18px;">🔵</span>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;">FASE 1</div>
+          <div style="font-weight:700;font-size:13px;color:var(--accent)">LACRE LV</div>
+          <div style="font-size:11px;color:var(--text2)">Por loja / por linha</div>
+        </div>
+      </div>
+      <div style="color:var(--text3);font-size:20px;">→</div>
+      <div id="phaseIndicatorBAU" style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:9px;border:1.5px solid var(--border);opacity:0.5;">
+        <span style="font-size:18px;">🟡</span>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;">FASE 2</div>
+          <div style="font-weight:700;font-size:13px;color:var(--gold)">LACRE BAÚ</div>
+          <div style="font-size:11px;color:var(--text2)">Por motorista — auto-replicado</div>
+        </div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="limparTodosLacres()">🗑 Limpar Lacres</button>
+        <button class="btn btn-gold btn-sm" onclick="aplicarLacresBau()">🔄 Replicar BAÚ</button>
+      </div>
+    </div>
+    <div id="lacreProgress" style="margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:5px;">
+        <span>Progresso dos Lacres</span>
+        <span id="lacreProgressTxt">0 / 0 preenchidos</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill" id="lacreProg" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- VALIDATION ERRORS -->
+  <div id="lacreErrors" style="display:none;" class="alert alert-err">
+    <span>🚫</span>
+    <div id="lacreErrorsList"></div>
+  </div>
+
+  <div id="lacreEmpty" class="empty" style="display:none;">
+    <div class="empty-icon">🔐</div>
+    <div class="empty-title">Nenhuma carga para inserir lacres</div>
+    <div class="empty-sub">Execute a otimização primeiro</div>
+    <div class="mt-16"><button class="btn btn-accent" onclick="wizNav(3)">⚡ Otimizar</button></div>
+  </div>
+
+  <div id="lacreTableSec" style="display:none;">
+    <!-- LACRE LV SECTION -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-head">
+        <div class="card-title"><span style="width:8px;height:8px;background:var(--accent);border-radius:50%;display:inline-block"></span> Lacres LV — Por Loja / Por Linha</div>
+        <div class="flex gap-8">
+          <input class="finput" style="width:180px;padding:6px 10px;font-size:11px;" id="lacreFilter" placeholder="🔍 Filtrar..." oninput="filtrarLacres()">
+          <span class="badge bg-cyan" id="lacreCountLV">0/0</span>
+        </div>
+      </div>
+      <div class="tw" id="lacreTableInner"></div>
+    </div>
+
+    <!-- LACRE BAU SECTION -->
+    <div class="card" id="bauPanelSec" style="display:none;margin-bottom:16px;">
+      <div class="card-head">
+        <div class="card-title"><span style="width:8px;height:8px;background:var(--gold);border-radius:50%;display:inline-block"></span> Lacres BAÚ — Por Motorista (auto-replicado)</div>
+        <span class="badge bg-gold" id="lacreCountBAU">0/0</span>
+      </div>
+      <div class="alert alert-info" style="margin-bottom:12px;">
+        <span>🔄</span>
+        <span>Ao preencher o Lacre BAÚ de um motorista, ele é <b>automaticamente replicado</b> para todas as linhas do mesmo motorista.</span>
+      </div>
+      <div class="bau-panel-grid" id="bauPanelGrid"></div>
+    </div>
+
+    <!-- FINALIZE BUTTON -->
+    <div class="card" style="background:rgba(0,230,118,.04);border-color:rgba(0,230,118,.2);">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:.08em;margin-bottom:4px;">🔐 FINALIZAÇÃO DE LACRES</div>
+          <div style="font-size:12px;color:var(--text2)">Todos os lacres LV e BAÚ devem estar preenchidos antes de prosseguir.</div>
+        </div>
+        <button class="btn btn-success btn-lg" onclick="finalizarLacres()">✅ Finalizar Inclusão de Lacres →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ PAGE 5: OTIMIZAÇÃO FINALIZADA ══════ -->
+<div class="page" id="page-step5">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● PASSO 5 — OTIMIZAÇÃO FINALIZADA</div>
+      <div class="ph-title">Otimização Finalizada ✅</div>
+      <div class="ph-sub">Distribuição concluída com lacres validados — envie o e-mail e exporte o Excel</div>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-ghost btn-sm" onclick="voltarOtimizacao()">↩ Ajustar / Refazer</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div id="docasStats" class="stats-grid" style="display:none;"></div>
+
+  <!-- Docas por bloco -->
+  <div id="docasView">
+    <div class="empty">
+      <div class="empty-icon">🏭</div>
+      <div class="empty-title">Otimização não executada</div>
+      <div class="empty-sub">Complete o fluxo a partir do Passo 1</div>
+      <div class="mt-16"><button class="btn btn-accent" onclick="wizNav(1)">🏭 Começar</button></div>
+    </div>
+  </div>
+
+  <!-- Tabela completa para aprovação -->
+  <div id="painelAprovacao" style="display:none;margin-top:24px;">
+    <div class="card" style="padding:0;">
+      <div class="card-head" style="padding:16px 20px;">
+        <div class="card-title"><span class="dot-accent"></span> Dados Completos para Aprovação</div>
+        <div class="flex gap-8">
+          <input class="finput" style="width:200px;padding:6px 10px;font-size:11px;" id="painelFiltro" placeholder="🔍 Filtrar..." oninput="filtrarPainel()">
+          <span class="badge bg-green" id="painelTotal">0 registros</span>
+        </div>
+      </div>
+      <div class="tw" id="painelTabela" style="max-height:420px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- Painel Sequência de Entrega por Lojas (TS) -->
+    <div id="painelSequenciaTS" class="card" style="display:none;margin-top:16px;background:rgba(189,147,249,.03);border-color:rgba(189,147,249,.2);padding:12px;"></div>
+
+    <!-- Painel Múltiplas Entregas -->
+    <div id="painelMultiplas" class="card" style="display:none;margin-top:16px;background:rgba(99,102,241,.03);border-color:rgba(99,102,241,.2);"></div>
+
+    <!-- Ações finais -->
+    <div class="card" style="background:rgba(0,230,118,.04);border-color:rgba(0,230,118,.2);margin-top:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:.08em;margin-bottom:4px;">✅ FLUXO OPERACIONAL</div>
+          <div style="font-size:12px;color:var(--text2)">Processo validado. Clique para finalizar e salvar no histórico.</div>
+        </div>
+        <div class="flex gap-8">
+          <button class="btn btn-gold btn-lg" onclick="finalizarProcesso()" id="btnFinalizarProcesso" style="gap:10px;">
+            <span>🏁</span><span>Finalizar Processo</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Seção de Exportação -->
+    <div class="card" style="background:rgba(99,102,241,.04);border-color:rgba(99,102,241,.2);margin-top:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.08em;margin-bottom:4px;">📤 EXPORTAÇÃO</div>
+          <div style="font-size:12px;color:var(--text2)">Gere o arquivo Excel para análise manual ou arquivo de referência.</div>
+        </div>
+        <div class="flex gap-8">
+          <button class="btn btn-success" onclick="downloadExcel()">💾 Gerar Excel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ PAGE: MOTORISTAS ══════ -->
+<div class="page" id="page-motoristas">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● CADASTRO</div>
+      <div class="ph-title">Motoristas Fixos ⭐</div>
+      <div class="ph-sub">Motoristas agregados com doca pré-definida — sempre alocados na 1ª onda</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="voltarWizard()">← Voltar ao Fluxo</button>
+  </div>
+  <div class="card">
+    <div class="card-head"><div class="card-title"><span class="dot-accent"></span> Cadastrar Motorista Fixo</div></div>
+    <div class="frow-3">
+      <div class="fg" style="margin-bottom:0"><label class="flabel">Nome do Motorista</label><input class="finput" id="mNome" placeholder="Nome completo"></div>
+      <div class="fg" style="margin-bottom:0"><label class="flabel">Doca Fixa</label><input class="finput" id="mDoca" placeholder="ex: 164"></div>
+      <div class="fg" style="margin-bottom:0"><label class="flabel">Placa (opcional)</label><input class="finput" id="mPlaca" placeholder="ex: FXG0A56"></div>
+    </div>
+    <div class="flex gap-8 mt-12">
+      <button class="btn btn-accent" onclick="addMotorista()">➕ Adicionar</button>
+      <button class="btn btn-ghost" onclick="importarFixosPadrao()">📥 Importar padrão</button>
+      <button class="btn btn-danger btn-sm" onclick="if(confirm('Remover todos?')){motoristas=[];saveMot();renderMotoristas();updateBadges();toast('🗑 Motoristas removidos','ok');}">🗑 Limpar</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title"><span class="dot-accent"></span> Motoristas cadastrados</div>
+      <span class="badge bg-gold" id="countMot">0 cadastrados</span>
+    </div>
+    <div id="motTable"><div class="empty"><div class="empty-icon">⭐</div><div class="empty-title">Nenhum cadastrado</div></div></div>
+  </div>
+</div>
+
+<!-- ══════ PAGE: CONFIG ══════ -->
+<div class="page" id="page-config">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● PARAMETRIZAÇÃO</div>
+      <div class="ph-title">Configurações</div>
+      <div class="ph-sub">Parâmetros avançados de distribuição</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="voltarWizard()">← Voltar ao Fluxo</button>
+  </div>
+  <div class="cfg-grid">
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="dot-accent"></span> Exportação Excel</div></div>
+      <div class="fg">
+        <label class="flabel">Incluir aba por doca</label>
+        <select class="fselect" id="cfgAbaDoca"><option value="1" selected>Sim — aba separada por doca</option><option value="0">Não — apenas aba geral</option></select>
+        <div class="help">Cada doca terá sua própria aba no Excel exportado</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="dot-accent"></span> Coluna do Motorista</div></div>
+      <div class="fg">
+        <label class="flabel">Usar coluna</label>
+        <select class="fselect" id="cfgColMot"><option value="MOTORISTA" selected>MOTORISTA</option><option value="RG">RG</option><option value="CPF">CPF</option></select>
+        <div class="help">Qual coluna identifica o motorista na planilha</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="dot-accent"></span> Filtro de Tipo</div></div>
+      <div class="fg">
+        <label class="flabel">Filtrar por TIPO (opcional)</label>
+        <input class="finput" id="cfgTipo" placeholder="ex: AG, SECO — vazio = todos">
+        <div class="help">Deixe em branco para processar todos os tipos</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ PAGE: HISTÓRICO ══════ -->
+<div class="page" id="page-historico">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● HISTÓRICO DE PROCESSOS</div>
+      <div class="ph-title">Histórico de Operações</div>
+      <div class="ph-sub">Registro automático de todas as otimizações realizadas — consultas, auditorias e análises</div>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-ghost btn-sm" onclick="voltarWizard()">← Voltar ao Fluxo</button>
+      <button class="btn btn-danger btn-sm" onclick="limparHistorico()">🗑 Limpar Histórico</button>
+      <button class="btn btn-ghost btn-sm" onclick="liberarEspacoLocalStorage()" title="Libera espaço se o sistema estiver travando">🔧 Liberar Espaço</button>
+    </div>
+  </div>
+
+  <div id="historicoEmpty" class="empty" style="display:none;">
+    <div class="empty-icon">📁</div>
+    <div class="empty-title">Nenhuma operação registrada</div>
+    <div class="empty-sub">O histórico será salvo automaticamente ao finalizar a otimização</div>
+  </div>
+
+  <div id="historicoList"></div>
+
+  <!-- Detalhe do histórico expandido -->
+  <div id="historicoDetalhe" style="display:none;margin-top:16px;">
+    <div class="card" style="border-color:var(--border2);">
+      <div class="card-head">
+        <div class="card-title"><span class="dot-accent"></span> Detalhe da Operação</div>
+        <div class="flex gap-8">
+          <button class="btn btn-success btn-sm" onclick="gerarExcelHistorico()">💾 Gerar Excel</button>
+          <button class="btn btn-accent btn-sm" onclick="reprocessarHistorico()">🔄 Reprocessar</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('historicoDetalhe').style.display='none'">✕ Fechar</button>
+        </div>
+      </div>
+      <div id="historicoDetalheCont"></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /layout -->
+
+
+<!-- ══════ MODAL: SENHA ══════ -->
+<div class="modal-overlay" id="senhaModal">
+  <div class="modal-box" style="max-width:380px;width:100%;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="modal-title" style="font-size:18px;">🔒 Confirmar Exclusão</div>
+      <button class="btn btn-ghost btn-sm" onclick="cancelarSenha()">✕</button>
+    </div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px;">Digite a senha para autorizar esta ação:</div>
+    <input class="finput" id="senhaInput" type="password" placeholder="Senha de acesso" onkeydown="if(event.key==='Enter')confirmarSenha()" style="margin-bottom:8px;">
+    <div id="senhaErro" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px;">❌ Senha incorreta. Tente novamente.</div>
+    <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:12px;">
+      <button class="btn btn-ghost btn-sm" onclick="cancelarSenha();abrirRecuperarSenha()" style="font-size:11px;color:var(--text3);">🔑 Esqueci a senha</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" onclick="cancelarSenha()">Cancelar</button>
+        <button class="btn btn-danger" onclick="confirmarSenha()">🔒 Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MODAL: GERENCIAR SENHA ══════ -->
+<div class="modal-overlay" id="senhaGerenciarModal">
+  <div class="modal-box" style="max-width:420px;width:100%;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div class="modal-title" style="font-size:18px;">🔐 Gerenciar Senha</div>
+      <button class="btn btn-ghost btn-sm" onclick="fecharGerenciarSenha()">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:20px;">Altere sua senha de segurança e configure uma dica de recuperação.</div>
+    <div style="display:flex;gap:4px;margin-bottom:18px;background:var(--surface2);border-radius:8px;padding:4px;">
+      <button id="tabAlterar" onclick="senhaTab('alterar')" style="flex:1;padding:7px;border-radius:6px;border:none;cursor:pointer;font-size:12px;font-weight:700;font-family:var(--sans);background:var(--accent);color:#fff;transition:all .15s;">🔑 Alterar Senha</button>
+      <button id="tabRecuperar" onclick="senhaTab('recuperar')" style="flex:1;padding:7px;border-radius:6px;border:none;cursor:pointer;font-size:12px;font-weight:700;font-family:var(--sans);background:transparent;color:var(--text2);transition:all .15s;">💡 Recuperar Senha</button>
+    </div>
+    <div id="painelAlterar">
+      <div class="fg">
+        <label class="flabel">Senha Atual</label>
+        <input class="finput" id="senhaAtualInput" type="password" placeholder="Digite a senha atual">
+      </div>
+      <div class="fg">
+        <label class="flabel">Nova Senha</label>
+        <input class="finput" id="senhaNova1Input" type="password" placeholder="Digite a nova senha">
+      </div>
+      <div class="fg">
+        <label class="flabel">Confirmar Nova Senha</label>
+        <input class="finput" id="senhaNova2Input" type="password" placeholder="Repita a nova senha" onkeydown="if(event.key==='Enter')salvarNovaSenha()">
+      </div>
+      <div class="fg">
+        <label class="flabel">Dica de Recuperação (apelido / frase fácil)</label>
+        <input class="finput" id="senhaDicaInput" placeholder="ex: nome do seu pet, apelido do time..." style="margin-bottom:4px;">
+        <div class="help">💡 Esta dica será exibida se você esquecer a senha. Não use a própria senha como dica.</div>
+      </div>
+      <div id="senhaAlterarErro" style="display:none;padding:10px 14px;background:rgba(255,61,90,.1);border:1px solid rgba(255,61,90,.25);border-radius:8px;color:var(--red);font-size:12px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+        <button class="btn btn-ghost" onclick="fecharGerenciarSenha()">Cancelar</button>
+        <button class="btn btn-accent" onclick="salvarNovaSenha()">💾 Salvar Nova Senha</button>
+      </div>
+    </div>
+    <div id="painelRecuperar" style="display:none;">
+      <div id="dicaRecuperacaoBox" style="margin-bottom:16px;padding:14px 16px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:9px;">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px;">💡 SUA DICA DE RECUPERAÇÃO</div>
+        <div id="dicaRecuperacaoTxt" style="font-size:14px;font-weight:600;color:var(--text);"></div>
+      </div>
+      <div class="fg">
+        <label class="flabel">Nova Senha (redefinir)</label>
+        <input class="finput" id="senhaRedefinirInput" type="password" placeholder="Digite a nova senha">
+      </div>
+      <div class="fg">
+        <label class="flabel">Confirmar Nova Senha</label>
+        <input class="finput" id="senhaRedefinir2Input" type="password" placeholder="Repita a nova senha" onkeydown="if(event.key==='Enter')redefinirSenhaComDica()">
+      </div>
+      <div id="senhaRecuperarErro" style="display:none;padding:10px 14px;background:rgba(255,61,90,.1);border:1px solid rgba(255,61,90,.25);border-radius:8px;color:var(--red);font-size:12px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+        <button class="btn btn-ghost" onclick="fecharGerenciarSenha()">Cancelar</button>
+        <button class="btn btn-accent" onclick="redefinirSenhaComDica()">🔑 Redefinir Senha</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
 <script>
-const firebaseConfig = {
-  apiKey: "SUA_API",
-  authDomain: "SEU_DOMINIO",
-  projectId: "SEU_PROJECT_ID",
+// ══════════════════════════════════
+//  STATE
+// ══════════════════════════════════
+let rawData = [];
+let lacresLV = {};
+let lacresBau = {};
+let motoristas = [];
+let optResult = null;
+let colsDetected = [];
+let docasDisponiveis = [];
+let wizardStep = 1;
+let wizardMaxUnlocked = 1;
+let tsData = null; // dados carregados do arquivo TS (sequência de entregas)
+
+const DOCAS_PRESET = ['156','157','158','159','160','161','162','163','164','165','166','167','168','169','170','171','172','173','174','175'];
+const DEFAULT_FIXOS = [
+  { nome: 'ANTONIO AFONSO',             doca: '164', placa: '' },
+  { nome: 'JOSE RIVALDO',               doca: '165', placa: 'EGJ9486' },
+  { nome: 'OSMILTON FERREIRA DA SILVA', doca: '166', placa: 'ELW5A10' },
+];
+
+window.onload = () => {
+  // Verificar e limpar localStorage se estiver próximo do limite
+  verificarQuotaLocalStorage();
+
+  motoristas = JSON.parse(localStorage.getItem('logix_motoristas') || 'null') || DEFAULT_FIXOS;
+  // Restaurar docas salvas — se inválido ou vazio, usar preset completo
+  try {
+    const savedDocas = JSON.parse(localStorage.getItem('logix_docas'));
+    docasDisponiveis = (Array.isArray(savedDocas) && savedDocas.length > 0) ? savedDocas : [...DOCAS_PRESET];
+  } catch(e) { docasDisponiveis = [...DOCAS_PRESET]; }
+  renderMotoristas();
+  renderDocasDisp();
+  updateBadges();
+  setupDnD();
+  renderHistorico();
 };
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+function verificarQuotaLocalStorage() {
+  try {
+    // Calcular uso atual
+    let totalBytes = 0;
+    for (const key in localStorage) {
+      if (localStorage.hasOwnProperty(key)) {
+        totalBytes += (localStorage[key].length + key.length) * 2;
+      }
+    }
+    const usadoKB = Math.round(totalBytes / 1024);
+    // Se usar mais de 3MB (limite geralmente é 5-10MB), compactar proativamente
+    if (usadoKB > 3000) {
+      console.warn(`localStorage usando ${usadoKB}KB — compactando histórico automaticamente...`);
+      limpiarLocalStorageSeBloqueado();
+    }
+  } catch(e) {}
+}
+
+// ══════════════════════════════════
+//  WIZARD NAVIGATION
+// ══════════════════════════════════
+function wizNav(step) {
+  if (step > wizardMaxUnlocked) {
+    toast(`⚠️ Complete o passo ${wizardMaxUnlocked} primeiro`, 'err');
+    return;
+  }
+  wizardStep = step;
+  // Hide all pages, show sidebar icons
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('act'));
+  document.querySelectorAll('.sicon').forEach(s => s.classList.remove('act'));
+
+  const pages = {1:'step1',2:'step2',3:'step3',4:'step4',5:'step5'};
+  const pg = pages[step];
+  if (pg) {
+    const el = document.getElementById('page-' + pg);
+    if (el) { el.classList.add('act'); el.style.removeProperty('display'); }
+    const si = document.getElementById('s-step' + step);
+    if (si) si.classList.add('act');
+  }
+
+  // Update wizard bar
+  for (let i = 1; i <= 5; i++) {
+    const ws = document.getElementById('ws' + i);
+    if (!ws) continue;
+    ws.className = 'wstep';
+    if (i === step) ws.classList.add('active');
+    else if (i < step) ws.classList.add('done');
+    else if (i > wizardMaxUnlocked) ws.classList.add('locked');
+  }
+
+  // Page-specific init
+  if (step === 3) renderOtimPage();
+  if (step === 4) renderLacreTable();
+  if (step === 5) renderResultado();
+}
+
+function nav(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('act'));
+  document.querySelectorAll('.sicon').forEach(s => s.classList.remove('act'));
+  const el = document.getElementById('page-' + page);
+  if (el) { el.classList.add('act'); el.style.removeProperty('display'); }
+  const si = document.getElementById('s-' + page);
+  if (si) si.classList.add('act');
+}
+
+function voltarWizard() { wizNav(wizardStep); }
+
+function unlockStep(n) {
+  if (n > wizardMaxUnlocked) wizardMaxUnlocked = n;
+  for (let i = 1; i <= 5; i++) {
+    const ws = document.getElementById('ws' + i);
+    if (!ws) continue;
+    ws.className = 'wstep';
+    if (i === wizardStep) ws.classList.add('active');
+    else if (i < wizardStep) ws.classList.add('done');
+    else if (i > wizardMaxUnlocked) ws.classList.add('locked');
+  }
+}
+
+// ══════════════════════════════════
+//  DOCAS DISPONÍVEIS
+// ══════════════════════════════════
+function addDocaDisp() {
+  const inp = document.getElementById('docaNovaInput');
+  const val = inp.value.trim();
+  if (!val) { toast('⚠️ Informe o número da doca', 'err'); return; }
+  if (docasDisponiveis.includes(val)) { toast('⚠️ Doca já adicionada', 'err'); inp.value=''; return; }
+  if (!DOCAS_PRESET.includes(val)) DOCAS_PRESET.push(val);
+  docasDisponiveis.push(val);
+  saveDocas(); renderDocasDisp(); inp.value = '';
+  toast(`✅ Doca ${val} adicionada`, 'ok');
+}
+
+function toggleDocaPreset(num) {
+  if (docasDisponiveis.includes(num)) docasDisponiveis = docasDisponiveis.filter(d => d !== num);
+  else docasDisponiveis.push(num);
+  saveDocas(); renderDocasDisp();
+}
+function selecionarTodasDocas() { docasDisponiveis = [...DOCAS_PRESET]; saveDocas(); renderDocasDisp(); }
+function deselecionarTodasDocas() { docasDisponiveis = []; saveDocas(); renderDocasDisp(); }
+function saveDocas() {
+  try {
+    localStorage.setItem('logix_docas', JSON.stringify(docasDisponiveis));
+  } catch(e) {
+    // localStorage cheio — limpar histórico antigo e tentar novamente
+    limpiarLocalStorageSeBloqueado();
+    try { localStorage.setItem('logix_docas', JSON.stringify(docasDisponiveis)); } catch(e2) {}
+  }
+}
+
+function renderDocasDisp() {
+  const grid = document.getElementById('docasPresetGrid');
+  const countEl = document.getElementById('docaDispCount');
+  if (!grid) return;
+  grid.innerHTML = DOCAS_PRESET.map(num => {
+    const ativo = docasDisponiveis.includes(num);
+    return `<div onclick="toggleDocaPreset('${num}')" style="display:inline-flex;align-items:center;gap:7px;background:${ativo?'rgba(99,102,241,.18)':'var(--surface2)'};border:1.5px solid ${ativo?'var(--accent)':'var(--border2)'};border-radius:8px;padding:7px 14px;cursor:pointer;font-family:var(--mono);font-size:13px;font-weight:700;color:${ativo?'var(--accent)':'var(--text2)'};transition:all .15s;user-select:none;">
+      <span style="width:14px;height:14px;border-radius:4px;border:1.5px solid ${ativo?'var(--accent)':'var(--border2)'};background:${ativo?'var(--accent)':'transparent'};display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:#000;flex-shrink:0;">${ativo?'✓':''}</span>
+      ${num}
+    </div>`;
+  }).join('');
+  if (countEl) {
+    countEl.textContent = docasDisponiveis.length + ' doca' + (docasDisponiveis.length !== 1 ? 's' : '') + ' selecionada' + (docasDisponiveis.length !== 1 ? 's' : '');
+    countEl.style.background = docasDisponiveis.length > 0 ? 'rgba(99,102,241,.2)' : 'rgba(255,61,90,.15)';
+    countEl.style.color = docasDisponiveis.length > 0 ? 'var(--accent)' : 'var(--red)';
+  }
+}
+
+function confirmarDocasDisp() {
+  if (!docasDisponiveis.length) { toast('⚠️ Adicione ao menos uma doca', 'err'); return; }
+  const resumo = document.getElementById('docasResumoUpload');
+  const lista = document.getElementById('docasResumoUploadList');
+  if (resumo && lista) {
+    lista.innerHTML = docasDisponiveis.map(n => `<span class="badge bg-cyan">🏭 Doca ${n}</span>`).join('');
+    resumo.style.display = 'block';
+  }
+  unlockStep(2);
+  toast(`✅ ${docasDisponiveis.length} doca(s) confirmadas — pode selecionar quantas precisar`, 'ok');
+  wizNav(2);
+}
+
+// ══════════════════════════════════
+//  DRAG & DROP
+// ══════════════════════════════════
+function setupDnD() {
+  const z = document.getElementById('uploadZone');
+  if (!z) return;
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('over'); });
+  z.addEventListener('dragleave', () => z.classList.remove('over'));
+  z.addEventListener('drop', e => { e.preventDefault(); z.classList.remove('over'); if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
+}
+
+// ══════════════════════════════════
+//  FILE HANDLING
+// ══════════════════════════════════
+function handleFile(ev) { if (ev.target.files[0]) processFile(ev.target.files[0]); }
+
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!json.length) { toast('❌ Planilha vazia', 'err'); return; }
+      rawData = json.map(row => normalizeRow(row));
+      rawData.sort((a, b) => (parseFloat(a['SEQ.']||0)) - (parseFloat(b['SEQ.']||0)));
+      rawData = rawData.map((r, i) => {
+        const out = { ...r, _idx: i };
+        if (out['DATA']) {
+          const d = out['DATA'];
+          if (d instanceof Date || (typeof d === 'string' && d.includes('-'))) {
+            const dt = d instanceof Date ? d : new Date(d);
+            out['DATA'] = fmtDate(dt);
+          }
+        }
+        if (out['CUB'] !== '' && out['CUB'] !== undefined) out['CUB'] = Math.round(parseFloat(out['CUB']||0)*100)/100;
+        return out;
+      });
+      rawData.forEach((r, i) => {
+        const lv = r['LACRE - LV'] || r['LACRE LV'] || r['LACRE-LV'] || '';
+        const bau = r['LACRE - BAÚ'] || r['LACRE BAÚ'] || r['LACRE-BAÚ'] || r['LACRE BAU'] || '';
+        if (lv) lacresLV[i] = String(lv);
+        if (bau) { const nome = String(r['MOTORISTA']||'').trim().toUpperCase(); if (nome && !lacresBau[nome]) lacresBau[nome] = String(bau); }
+      });
+      colsDetected = Object.keys(rawData[0]).filter(c => !c.startsWith('_'));
+      renderPreview();
+      updateStatus();
+      updateBadges();
+      unlockStep(3);
+      toast(`✅ ${rawData.length} registros carregados`, 'ok');
+      // Só avança automaticamente se o arquivo TS também estiver carregado
+      if (tsData && tsData.grupos && tsData.grupos.length > 0) {
+        setTimeout(() => { wizNav(3); }, 800);
+      }
+    } catch (err) { toast('❌ Erro: ' + err.message, 'err'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function normalizeRow(row) {
+  const map = {
+    'DATA': ['DATA'], 'SEQ.': ['SEQ.','SEQ','SEQUENCIA','SEQUÊNCIA'],
+    'LOJA': ['LOJA'], 'PRÉ-05': ['PRE-05','PRÉ-05','PRE05'],
+    'PRÉ-ROMANEIO': ['PRÉROMANEIO','PRÉ-ROMANEIO','PRE-ROMANEIO','PREROMANEIO'],
+    'LACRE - LV': ['LACRE - LV','LACRE LV','LACRE-LV','LACRE_LV'],
+    'LACRE - BAÚ': ['LACRE - BAÚ','LACRE BAÚ','LACRE-BAÚ','LACRE BAU','LACRE-BAU'],
+    'QTD NF': ['QTD NF','QTD_NF','QTDNF'], 'VOLUMES': ['VOLUMES','VOL'],
+    'DOCA-05': ['DOCA-05','DOCA05'], 'DOCA': ['DOCA'], 'CUB': ['CUB','CUBAGEM'],
+    'TIPO': ['TIPO'], 'MOTORISTA': ['MOTORISTA'], 'RG': ['RG'], 'CPF': ['CPF'],
+    'PLACA': ['PLACA'], 'TELEFONE': ['TELEFONE','TEL'],
+  };
+  const out = {};
+  const rowKeys = Object.keys(row);
+  for (const [canonical, aliases] of Object.entries(map)) {
+    for (const alias of aliases) {
+      const found = rowKeys.find(k => k.trim().toUpperCase() === alias.toUpperCase());
+      if (found !== undefined) { out[canonical] = row[found]; break; }
+    }
+    if (out[canonical] === undefined) out[canonical] = '';
+  }
+  rowKeys.forEach(k => {
+    const norm = k.trim().toUpperCase();
+    const knownAlias = Object.values(map).flat().map(a => a.toUpperCase());
+    if (!knownAlias.includes(norm)) out[k] = row[k];
+  });
+  return out;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  if (!(d instanceof Date)) d = new Date(d);
+  if (isNaN(d)) return '';
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+function clearFile() {
+  rawData = []; lacresLV = {}; lacresBau = {}; optResult = null;
+  document.getElementById('previewSec').style.display = 'none';
+  document.getElementById('fi').value = '';
+  wizardMaxUnlocked = 2;
+  updateStatus(); updateBadges();
+  toast('🗑 Dados limpos', 'ok');
+}
+
+function confirmarLimparTudo() {
+  if (!confirm('⚠️ Limpar TODOS os dados?\n\nIsso vai resetar:\n• Arquivo de carga carregado\n• Arquivo TS\n• Resultado da otimização\n• Lacres preenchidos\n\nA ferramenta voltará ao início do Passo 2 pronta para um novo processo. Deseja continuar?')) return;
+  limparTodosDados();
+}
+
+function limparTodosDados() {
+  rawData = [];
+  lacresLV = {};
+  lacresBau = {};
+  optResult = null;
+  tsData = null;
+  colsDetected = [];
+
+  const fi = document.getElementById('fi');
+  if (fi) fi.value = '';
+  const tsFi = document.getElementById('tsFi');
+  if (tsFi) tsFi.value = '';
+
+  document.getElementById('previewSec').style.display = 'none';
+
+  const tsPreviewSec = document.getElementById('tsPreviewSec');
+  if (tsPreviewSec) tsPreviewSec.style.display = 'none';
+  const tsBadge = document.getElementById('tsBadge');
+  if (tsBadge) tsBadge.style.display = 'none';
+  const tsClearBtn = document.getElementById('tsClearBtn');
+  if (tsClearBtn) tsClearBtn.style.display = 'none';
+
+  wizardMaxUnlocked = 2;
+  wizardStep = 2;
+
+  [3,4,5].forEach(n => {
+    const ws = document.getElementById('ws'+n);
+    if (ws) { ws.classList.remove('done','active'); ws.classList.add('locked'); }
+  });
+
+  updateStatus();
+  updateBadges();
+  wizNav(2);
+
+  toast('✅ Todos os dados foram limpos. Pronto para novo processo!', 'ok');
+}
+
+// ══════════════════════════════════
+//  RENDER PREVIEW
+// ══════════════════════════════════
+function renderPreview() {
+  document.getElementById('previewSec').style.display = 'block';
+  document.getElementById('uploadBadge').textContent = rawData.length + ' registros';
+  const tVol = rawData.reduce((a,r)=>a+(parseFloat(r['VOLUMES']||0)||0),0);
+  const tNF  = rawData.reduce((a,r)=>a+(parseFloat(r['QTD NF']||0)||0),0);
+  const tCub = rawData.reduce((a,r)=>a+(parseFloat(r['CUB']||0)||0),0);
+  document.getElementById('uploadStats').innerHTML = `
+    <div class="stat-card"><div class="stat-lbl">Cargas</div><div class="stat-val" style="color:var(--accent)">${rawData.length}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Total NFs</div><div class="stat-val" style="color:var(--green)">${tNF}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Total Volumes</div><div class="stat-val" style="color:var(--purple)">${tVol}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Cubagem m³</div><div class="stat-val" style="color:var(--gold)">${tCub.toFixed(2)}</div></div>`;
+  const cols = ['SEQ.','DATA','LOJA','MOTORISTA','QTD NF','VOLUMES','CUB','TIPO','PLACA'];
+  const preview = rawData.slice(0, 10);
+  let html = '<table><thead><tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  preview.forEach(row => {
+    const isFixo = motoristas.some(m => m.nome === String(row['MOTORISTA']||'').trim().toUpperCase());
+    html += `<tr${isFixo?' class="fixo-row"':''}>`;
+    cols.forEach(c => {
+      let v = row[c] ?? '';
+      if (c === 'MOTORISTA' && isFixo) v = `⭐ ${v}`;
+      if (c === 'CUB') v = parseFloat(v||0).toFixed(2);
+      html += `<td>${v}</td>`;
+    });
+    html += '</tr>';
+  });
+  if (rawData.length > 10) html += `<tr><td colspan="${cols.length}" style="text-align:center;color:var(--text3);font-style:italic;padding:12px">… mais ${rawData.length-10} registros</td></tr>`;
+  html += '</tbody></table>';
+  document.getElementById('previewTable').innerHTML = html;
+}
+
+// ══════════════════════════════════
+//  RENDER OTIMIZAR PAGE
+// ══════════════════════════════════
+function renderOtimPage() {
+  if (!rawData.length) {
+    document.getElementById('otimEmpty').style.display = 'block';
+    document.getElementById('otimReady').style.display = 'none';
+    return;
+  }
+  document.getElementById('otimEmpty').style.display = 'none';
+  document.getElementById('otimReady').style.display = 'block';
+
+  const todasDocas = [...new Set([...docasDisponiveis, ...motoristas.map(m=>m.doca)])];
+  const docasInfo = document.getElementById('otimDocasInfo');
+  if (!docasDisponiveis.length) {
+    docasInfo.innerHTML = `<div style="color:var(--red);font-size:12px;">⚠️ Nenhuma doca configurada. <button class="btn btn-accent btn-sm" onclick="wizNav(1)" style="margin-left:8px">🏭 Configurar</button></div>`;
+  } else {
+    const tags = todasDocas.map(n => `<span class="badge bg-cyan">🏭 Doca ${n}</span>`).join('');
+    docasInfo.innerHTML = `<div class="card-title" style="color:var(--accent);margin-bottom:10px;">🏭 Docas para otimização hoje</div><div style="display:flex;flex-wrap:wrap;gap:6px;">${tags}</div><div class="help" style="margin-top:8px;"><button class="btn btn-ghost btn-sm" onclick="wizNav(1)" style="font-size:11px;">✏️ Editar docas</button></div>`;
+  }
+  const tVol = rawData.reduce((a,r)=>a+(parseFloat(r['VOLUMES']||0)||0),0);
+  const tNF  = rawData.reduce((a,r)=>a+(parseFloat(r['QTD NF']||0)||0),0);
+  const fixCt = rawData.filter(r=>motoristas.some(m=>m.nome===String(r['MOTORISTA']||'').trim().toUpperCase())).length;
+  document.getElementById('otimStats').innerHTML = `
+    <div class="stat-card"><div class="stat-lbl">Total Cargas</div><div class="stat-val" style="color:var(--accent)">${rawData.length}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Fixos Detectados</div><div class="stat-val" style="color:var(--gold)">${fixCt}</div><div class="stat-sub">1ª onda garantida</div></div>
+    <div class="stat-card"><div class="stat-lbl">Variáveis</div><div class="stat-val" style="color:var(--purple)">${rawData.length-fixCt}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Total Volumes</div><div class="stat-val" style="color:var(--green)">${tVol}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Total NFs</div><div class="stat-val" style="color:var(--text)">${tNF}</div></div>`;
+  if (motoristas.length > 0) {
+    const info = motoristas.map(m=>`<span class="badge bg-gold" style="margin:2px">⭐ ${m.nome.split(' ')[0]} → Doca ${m.doca}</span>`).join(' ');
+    document.getElementById('motFixosInfo').innerHTML = `<div class="card" style="background:rgba(255,184,0,.04);border-color:rgba(255,184,0,.2);margin-bottom:0;"><div class="card-title" style="margin-bottom:8px;color:var(--gold)">⭐ Motoristas Fixos — sempre 1ª onda</div><div>${info}</div></div>`;
+  }
+  document.getElementById('otimBadge').textContent = rawData.length + ' registros';
+  const cols = ['SEQ.','DATA','LOJA','MOTORISTA','QTD NF','VOLUMES','CUB','TIPO','PLACA'];
+  let html = '<table><thead><tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  rawData.forEach(row => {
+    const isFixo = motoristas.some(m=>m.nome===String(row['MOTORISTA']||'').trim().toUpperCase());
+    html += `<tr${isFixo?' class="fixo-row"':''}>`;
+    cols.forEach(c => {
+      let v = row[c] ?? '';
+      if (c === 'MOTORISTA' && isFixo) v = `⭐ ${v}`;
+      if (c === 'CUB') v = parseFloat(v||0).toFixed(2);
+      html += `<td>${v}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('otimPreviewTable').innerHTML = html;
+}
+
+function filtrarOtimPreview() {
+  const q = document.getElementById('otimFiltro').value.toLowerCase();
+  document.querySelectorAll('#otimPreviewTable tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+}
+
+// ══════════════════════════════════
+//  OTIMIZAÇÃO
+// ══════════════════════════════════
+function executarOtimizacao() {
+  if (!rawData.length) { toast('⚠️ Faça upload primeiro', 'err'); return; }
+  if (!docasDisponiveis.length) { toast('⚠️ Configure as docas primeiro', 'err'); wizNav(1); return; }
+
+  let numerosDocas = [...docasDisponiveis];
+  const ondasVar = Math.max(1, parseInt(document.getElementById('ondasSel').value) || 3);
+  const docaFallback = numerosDocas[0];
+  const criterio = 'volumes';
+  const maxVol = 0;
+  const maxNF  = 0;
+  const colMot = (document.getElementById('cfgColMot') || {}).value || 'MOTORISTA';
+  const filtroTipo = (document.getElementById('cfgTipo') || {}).value || '';
+
+  motoristas.forEach(m => { if (m.doca && !numerosDocas.includes(m.doca)) numerosDocas.push(m.doca); });
+
+  let dados = rawData;
+  if (filtroTipo.trim()) dados = dados.filter(r => String(r['TIPO']||'').toUpperCase().includes(filtroTipo.trim().toUpperCase()));
+
+  const dm = {};
+  numerosDocas.forEach(n => { dm[n] = { rows: [], vol: 0, nf: 0, cub: 0 }; });
+  const motMap = {};
+  motoristas.forEach(m => { motMap[m.nome.toUpperCase()] = m; });
+
+  const naoAloc = [];
+  dados.forEach(row => {
+    const nome = String(row[colMot] || row['MOTORISTA'] || '').trim().toUpperCase();
+    const fix = motMap[nome];
+    if (fix && dm[fix.doca]) {
+      const vol = parseFloat(row['VOLUMES']||0)||0, nf = parseFloat(row['QTD NF']||0)||0, cub = parseFloat(row['CUB']||0)||0;
+      dm[fix.doca].rows.push({ ...row, _doca: fix.doca, _onda: 1, _fixo: true });
+      dm[fix.doca].vol += vol; dm[fix.doca].nf += nf; dm[fix.doca].cub += cub;
+    } else naoAloc.push(row);
+  });
+
+  const ondaSize = Math.ceil(naoAloc.length / ondasVar);
+  naoAloc.forEach((row, idx) => {
+    const ondaAtual = Math.floor(idx / ondaSize) + 2;
+    let best = null, bestPeso = Infinity;
+    numerosDocas.forEach(num => {
+      const d = dm[num];
+      const vol = parseFloat(row['VOLUMES']||0)||0, nf = parseFloat(row['QTD NF']||0)||0;
+      if (maxVol > 0 && d.vol + vol > maxVol) return;
+      if (maxNF > 0 && d.nf + nf > maxNF) return;
+      const peso = d.vol;
+      if (peso < bestPeso) { bestPeso = peso; best = num; }
+    });
+    if (!best) best = docaFallback;
+    const vol = parseFloat(row['VOLUMES']||0)||0, nf = parseFloat(row['QTD NF']||0)||0, cub = parseFloat(row['CUB']||0)||0;
+    dm[best].rows.push({ ...row, _doca: best, _onda: ondaAtual, _fixo: false });
+    dm[best].vol += vol; dm[best].nf += nf; dm[best].cub += cub;
+  });
+
+  optResult = { docaMap: dm, numerosDocas };
+
+  // ── NORMALIZAR ONDAS POR DOCA ──────────────────────────────────────────────
+  // Garante sequência crescente a partir de 1ª onda em cada doca,
+  // eliminando saltos (ex: 1ª → 4ª) independente dos valores atribuídos
+  // durante a distribuição.
+  normalizarOndas(optResult);
+
+  updateBadges();
+  unlockStep(4);
+  toast(`🚀 ${dados.length} cargas distribuídas em ${numerosDocas.length} docas`, 'ok');
+  wizNav(4);
+}
+
+// ══════════════════════════════════
+//  NORMALIZAÇÃO DE ONDAS POR DOCA
+// ══════════════════════════════════
+// Recebe o optResult e reescreve _onda em cada linha de cada doca
+// para que a sequência seja sempre 1, 2, 3... sem saltos.
+// Lógica:
+//   1. Coleta os valores únicos de _onda presentes na doca, ordenados.
+//   2. Cria um mapeamento: ondaOriginal → posição sequencial (1-based).
+//   3. Reescreve _onda de cada linha usando esse mapeamento.
+function normalizarOndas(result) {
+  if (!result) return;
+  const { docaMap, numerosDocas } = result;
+  numerosDocas.forEach(num => {
+    const d = docaMap[num];
+    if (!d || !d.rows.length) return;
+
+    // Pega os valores únicos de onda nesta doca, em ordem crescente
+    const ondasUnicas = [...new Set(d.rows.map(r => r._onda))].sort((a, b) => a - b);
+
+    // Monta mapa: valor original → novo valor sequencial (1, 2, 3, ...)
+    const mapaOnda = {};
+    ondasUnicas.forEach((ondaOrig, i) => { mapaOnda[ondaOrig] = i + 1; });
+
+    // Reescreve _onda de cada linha
+    d.rows.forEach(r => { r._onda = mapaOnda[r._onda]; });
+  });
+}
+
+function voltarOtimizacao() { optResult = null; updateBadges(); wizardMaxUnlocked = Math.min(wizardMaxUnlocked, 3); wizNav(3); }
+
+// ══════════════════════════════════
+//  LACRES
+// ══════════════════════════════════
+function renderLacreTable() {
+  if (!optResult || !rawData.length) {
+    document.getElementById('lacreEmpty').style.display = 'block';
+    document.getElementById('lacreTableSec').style.display = 'none';
+    return;
+  }
+  document.getElementById('lacreEmpty').style.display = 'none';
+  document.getElementById('lacreTableSec').style.display = 'block';
+
+  // BAU panel
+  const uniqueMotoristas = [...new Set(rawData.map(r => String(r['MOTORISTA']||'').trim().toUpperCase()).filter(Boolean))];
+  if (uniqueMotoristas.length > 0) {
+    document.getElementById('bauPanelSec').style.display = 'block';
+    let bauHtml = '';
+    uniqueMotoristas.forEach(nome => {
+      const val = lacresBau[nome] || '';
+      const isFixo = motoristas.some(m => m.nome === nome);
+      const hasVal = !!val;
+      bauHtml += `<div class="bau-row" style="${hasVal?'border-color:rgba(255,184,0,.35);background:rgba(255,184,0,.05);':''}">
+        <div class="bau-label" title="${nome}">${isFixo?'⭐ ':''}${nome.split(' ').slice(0,2).join(' ')}</div>
+        <input class="lacre-input${hasVal?' filled-bau':''}" type="text" placeholder="BAÚ-XXXXX" value="${val}"
+          style="width:130px" onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" data-bau="${nome.replace(/"/g,'&quot;')}">
+      </div>`;
+    });
+    document.getElementById('bauPanelGrid').innerHTML = bauHtml;
+  }
+
+  // LV table
+  let html = `<table><thead><tr>
+    <th>SEQ</th><th>LOJA</th><th>MOTORISTA</th>
+    <th>LACRE LV <span style="color:var(--accent);font-size:9px">(por loja)</span></th>
+    <th>LACRE BAÚ <span style="color:var(--gold);font-size:9px">(por motorista)</span></th>
+  </tr></thead><tbody>`;
+  rawData.forEach((row, i) => {
+    const nome = String(row['MOTORISTA']||'').trim().toUpperCase();
+    const isFixo = motoristas.some(m => m.nome === nome);
+    const lvVal = lacresLV[i] || '';
+    const bauVal = lacresBau[nome] || '';
+    const lvMissing = !lvVal;
+    const bauMissing = !bauVal;
+    html += `<tr${isFixo?' class="fixo-row"':''}>
+      <td><span class="badge bg-gray">${row['SEQ.']||i+1}</span></td>
+      <td><b>${row['LOJA']||''}</b></td>
+      <td>${isFixo?'⭐ ':''}${row['MOTORISTA']||''}</td>
+      <td><input class="lacre-input${lvVal?' filled-lv':''}${lvMissing?' missing':''}" type="text" placeholder="LV-XXXXX" value="${lvVal}"
+        onchange="setLacreLV(${i}, this.value)" data-lv="${i}"></td>
+      <td><input class="lacre-input${bauVal?' filled-bau':''}${bauMissing?' missing':''}" type="text" placeholder="BAÚ-XXXXX" value="${bauVal}"
+        onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" data-bau="${nome.replace(/"/g,'&quot;')}"></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('lacreTableInner').innerHTML = html;
+  updateLacreProgress();
+}
+
+function setLacreLV(idx, val) {
+  lacresLV[idx] = val.trim().toUpperCase();
+  document.querySelectorAll(`[data-lv="${idx}"]`).forEach(el => {
+    el.value = val.trim().toUpperCase();
+    el.classList.toggle('filled-lv', !!val);
+    el.classList.toggle('missing', !val);
+  });
+  updateLacreProgress();
+}
+
+function setLacreBau(nome, val) {
+  lacresBau[nome] = val.trim().toUpperCase();
+  document.querySelectorAll(`[data-bau="${nome}"]`).forEach(el => {
+    el.value = val.trim().toUpperCase();
+    el.classList.toggle('filled-bau', !!val);
+    el.classList.toggle('missing', !val);
+    const parentRow = el.closest('.bau-row');
+    if (parentRow) { parentRow.style.borderColor = val ? 'rgba(255,184,0,.35)' : ''; parentRow.style.background = val ? 'rgba(255,184,0,.05)' : ''; }
+  });
+  if (val) toast(`🔄 Lacre BAÚ replicado → ${nome.split(' ')[0]}`, 'ok');
+  updateLacreProgress();
+}
+
+function updateLacreProgress() {
+  const totalLV = rawData.length;
+  const preenchidosLV = rawData.filter((_, i) => !!lacresLV[i]).length;
+  const uniqueMots = [...new Set(rawData.map(r => String(r['MOTORISTA']||'').trim().toUpperCase()).filter(Boolean))];
+  const totalBAU = uniqueMots.length;
+  const preenchidosBAU = uniqueMots.filter(n => !!lacresBau[n]).length;
+  const total = totalLV + totalBAU;
+  const preenchidos = preenchidosLV + preenchidosBAU;
+  const pct = total > 0 ? (preenchidos / total * 100) : 0;
+  const progEl = document.getElementById('lacreProg');
+  const progTxt = document.getElementById('lacreProgressTxt');
+  const lvCount = document.getElementById('lacreCountLV');
+  const bauCount = document.getElementById('lacreCountBAU');
+  if (progEl) progEl.style.width = pct + '%';
+  if (progTxt) progTxt.textContent = `${preenchidos} / ${total} preenchidos`;
+  if (lvCount) lvCount.textContent = `${preenchidosLV}/${totalLV} LV`;
+  if (bauCount) bauCount.textContent = `${preenchidosBAU}/${totalBAU} BAÚ`;
+}
+
+function filtrarLacres() {
+  const q = (document.getElementById('lacreFilter')?.value || '').toLowerCase();
+  document.querySelectorAll('#lacreTableInner tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+}
+
+function aplicarLacresBau() {
+  Object.entries(lacresBau).forEach(([nome, val]) => {
+    document.querySelectorAll(`[data-bau="${nome}"]`).forEach(el => { el.value = val; el.classList.toggle('filled-bau', !!val); el.classList.toggle('missing', !val); });
+  });
+  toast('✅ Lacres BAÚ replicados para todos os motoristas', 'ok');
+}
+
+function limparTodosLacres() {
+  lacresLV = {}; lacresBau = {};
+  renderLacreTable();
+  toast('🗑 Lacres limpos', 'ok');
+}
+
+function validarLacres() {
+  const erros = [];
+  // Verificar LV
+  const semLV = rawData.filter((_, i) => !lacresLV[i]);
+  if (semLV.length > 0) {
+    erros.push(`🔵 ${semLV.length} linha(s) sem Lacre LV: ${semLV.slice(0,3).map(r=>r['LOJA']||'?').join(', ')}${semLV.length>3?'...':''}`);
+  }
+  // Verificar BAÚ
+  const uniqueMots = [...new Set(rawData.map(r => String(r['MOTORISTA']||'').trim().toUpperCase()).filter(Boolean))];
+  const semBAU = uniqueMots.filter(n => !lacresBau[n]);
+  if (semBAU.length > 0) {
+    erros.push(`🟡 ${semBAU.length} motorista(s) sem Lacre BAÚ: ${semBAU.slice(0,3).map(n=>n.split(' ')[0]).join(', ')}${semBAU.length>3?'...':''}`);
+  }
+  return erros;
+}
+
+function finalizarLacres() {
+  const erros = validarLacres();
+  const errDiv = document.getElementById('lacreErrors');
+  const errList = document.getElementById('lacreErrorsList');
+  if (erros.length > 0) {
+    errList.innerHTML = `<div style="font-weight:700;margin-bottom:6px;">🚫 Não é possível finalizar — lacres pendentes:</div>` + erros.map(e=>`<div style="margin-top:4px;">• ${e}</div>`).join('');
+    errDiv.style.display = 'flex';
+    renderLacreTable();
+    toast('🚫 Existem lacres não preenchidos. Verifique!', 'err');
+    return;
+  }
+  errDiv.style.display = 'none';
+  unlockStep(5);
+  toast('🎉 Lacres validados! Avançando para Otimização Finalizada...', 'ok');
+  setTimeout(() => wizNav(5), 400);
+}
+
+// ══════════════════════════════════
+//  RENDER RESULTADO (PASSO 5)
+// ══════════════════════════════════
+function renderResultado() {
+  if (!optResult) return;
+  const { docaMap, numerosDocas } = optResult;
+
+  const tVol = Object.values(docaMap).reduce((a,d)=>a+d.vol,0);
+  const tNF  = Object.values(docaMap).reduce((a,d)=>a+d.nf,0);
+  const tCub = Object.values(docaMap).reduce((a,d)=>a+d.cub,0);
+  const tDocas = numerosDocas.filter(n=>docaMap[n]?.rows.length>0).length;
+
+  const sg = document.getElementById('docasStats');
+  sg.style.display = 'grid';
+  sg.innerHTML = `
+    <div class="stat-card"><div class="stat-lbl">Docas usadas</div><div class="stat-val" style="color:var(--accent)">${tDocas}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Total NFs</div><div class="stat-val" style="color:var(--green)">${tNF}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Total Volumes</div><div class="stat-val" style="color:var(--purple)">${tVol}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Cubagem m³</div><div class="stat-val" style="color:var(--gold)">${tCub.toFixed(2)}</div></div>
+    <div class="stat-card"><div class="stat-lbl">Lacres LV</div><div class="stat-val" style="color:var(--accent)">${Object.keys(lacresLV).length}</div><div class="stat-sub">validados ✅</div></div>
+    <div class="stat-card"><div class="stat-lbl">Lacres BAÚ</div><div class="stat-val" style="color:var(--gold)">${Object.keys(lacresBau).length}</div><div class="stat-sub">motoristas ✅</div></div>`;
+
+  let html = '<div class="docas-grid">';
+  numerosDocas.forEach(num => {
+    const d = docaMap[num];
+    if (!d || !d.rows.length) return;
+    const byOnda = {};
+    d.rows.forEach(r => { const o = r._onda; if (!byOnda[o]) byOnda[o]=[]; byOnda[o].push(r); });
+    html += `<div class="doca-block">
+      <div class="doca-hdr">
+        <div><div class="doca-num">${num}</div><div class="doca-lbl">DOCA</div></div>
+        <div class="doca-stats">
+          <span class="badge bg-green">${d.nf} NF</span>
+          <span class="badge bg-purple">${d.vol} vol</span>
+          <span class="badge bg-gold">${d.cub.toFixed(1)} m³</span>
+          <span class="badge bg-cyan">${d.rows.length} cargas</span>
+        </div>
+      </div>
+      <div class="doca-body">`;
+    Object.keys(byOnda).sort((a,b)=>a-b).forEach(onda => {
+      const ondaRows = byOnda[onda];
+      const cls = ['','onda1','onda2','onda3','onda4'][Math.min(parseInt(onda),4)]||'bg-gray';
+      html += `<div class="onda-sep"><span class="badge ${cls}" style="font-size:9px">${onda}ª onda</span></div>`;
+      ondaRows.forEach(r => {
+        const nome = r['MOTORISTA']||'—';
+        const loja = r['LOJA']||'';
+        const nf = r['QTD NF']||0, vol = r['VOLUMES']||0;
+        const idx = r._idx;
+        const lvVal = lacresLV[idx]||'';
+        const bauVal = lacresBau[String(r['MOTORISTA']||'').trim().toUpperCase()]||'';
+        html += `<div class="doca-row${r._fixo?' fixo':''}">
+          <div class="doca-row-name">${r._fixo?'⭐ ':''}${nome.split(' ').slice(0,2).join(' ')}${loja?' <span style="color:var(--text3)">·</span> '+loja:''}</div>
+          <div class="doca-row-info">
+            ${lvVal?`<span class="badge bg-gray" style="font-size:9px">LV:${lvVal}</span>`:''}
+            ${bauVal?`<span class="badge bg-gold" style="font-size:9px">🔐${bauVal}</span>`:''}
+            <span class="badge bg-gray" style="font-size:9px">${nf}NF</span>
+            <span class="badge bg-gray" style="font-size:9px">${vol}vol</span>
+          </div>
+        </div>`;
+      });
+    });
+    html += `</div></div>`;
+  });
+  html += '</div>';
+  document.getElementById('docasView').innerHTML = html;
+  renderPainelAprovacao();
+  renderSequenciaTS();
+  renderPainelMultiplasEntregas();
+}
+
+function renderPainelAprovacao() {
+  if (!optResult) return;
+  const { docaMap, numerosDocas } = optResult;
+  const painel = document.getElementById('painelAprovacao');
+  if (!painel) return;
+  painel.style.display = 'block';
+  const rows = [];
+  numerosDocas.forEach(num => { const d = docaMap[num]; if (d) d.rows.forEach(r => rows.push(r)); });
+  document.getElementById('painelTotal').textContent = rows.length + ' registros';
+  function fmtDocaOnda(doca, onda) { const ord = onda===1?'1°':onda===2?'2°':onda===3?'3°':onda+'°'; return `${doca} (${ord} onda)`; }
+  // Colunas filtradas: DOCA DEFINIDA, ONDA, MOTORISTA FIXO são excluídas (não existem no arquivo original)
+  const cols = ['DATA','SEQ.','LOJA','PRE-05','PRÉROMANEIO','LACRE - LV','LACRE - BAÚ','QTD NF','VOLUMES','DOCA-05','DOCA','CUB','TIPO','MOTORISTA','RG','CPF','PLACA','TELEFONE'];
+  let html = '<table><thead><tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  rows.forEach(r => {
+    const nome = String(r['MOTORISTA']||'').trim().toUpperCase();
+    const lvVal = lacresLV[r._idx]||'';
+    const bauVal = lacresBau[nome]||'';
+    const doca05 = r._onda===1 ? fmtDocaOnda('163',1) : (r['DOCA-05']||r['DOCA05']||'');
+    const docaFmt = fmtDocaOnda(r._doca, r._onda);
+    html += `<tr${r._fixo?' class="fixo-row"':''}>`;
+    cols.forEach(c => {
+      let v = '';
+      if      (c==='DATA')           v = r['DATA']||'';
+      else if (c==='SEQ.')           v = r['SEQ.']||'';
+      else if (c==='LOJA')           v = r['LOJA']||'';
+      else if (c==='PRE-05')         v = r['PRÉ-05']||r['PRE-05']||'';
+      else if (c==='PRÉROMANEIO')    v = r['PRÉ-ROMANEIO']||r['PRÉROMANEIO']||'';
+      else if (c==='LACRE - LV')     v = lvVal ? `<span class="badge bg-gray">${lvVal}</span>` : '<span style="color:var(--red)">—</span>';
+      else if (c==='LACRE - BAÚ')    v = bauVal ? `<span class="badge bg-gold">🔐 ${bauVal}</span>` : '<span style="color:var(--red)">—</span>';
+      else if (c==='QTD NF')         v = r['QTD NF']||0;
+      else if (c==='VOLUMES')        v = r['VOLUMES']||0;
+      else if (c==='DOCA-05')        v = doca05 ? `<span class="badge bg-cyan" style="font-size:9px">${doca05}</span>` : '';
+      else if (c==='DOCA')           v = `<span class="badge bg-purple" style="font-size:9px">${docaFmt}</span>`;
+      else if (c==='CUB')            v = parseFloat(r['CUB']||0).toFixed(2);
+      else if (c==='TIPO')           v = r['TIPO']||'';
+      else if (c==='MOTORISTA')      v = (r._fixo?'⭐ ':'')+(r['MOTORISTA']||'');
+      else if (c==='RG')             v = r['RG']||'';
+      else if (c==='CPF')            v = r['CPF']||'';
+      else if (c==='PLACA')          v = r['PLACA']||'';
+      else if (c==='TELEFONE')       v = r['TELEFONE']||'';
+      html += `<td>${v}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('painelTabela').innerHTML = html;
+}
+
+function filtrarPainel() {
+  const q = document.getElementById('painelFiltro').value.toLowerCase();
+  document.querySelectorAll('#painelTabela tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+}
+
+// ══════════════════════════════════
+//  PAINEL MÚLTIPLAS ENTREGAS
+// ══════════════════════════════════
+function calcularMultiplasEntregas() {
+  // Se há dados TS carregados, usa a sequência do arquivo TS
+  if (tsData && tsData.grupos && tsData.grupos.length > 0) {
+    return calcularMultiplasEntregasTS();
+  }
+  // Retorna mapa: { nomeMotorista: [ {seq, loja, nf, vol, lvVal, onda, doca}, ... ] }
+  if (!optResult) return {};
+  const { docaMap, numerosDocas } = optResult;
+  const motMap = {};
+  numerosDocas.forEach(num => {
+    const d = docaMap[num];
+    if (!d) return;
+    d.rows.forEach(r => {
+      const nome = String(r['MOTORISTA']||'').trim().toUpperCase();
+      if (!nome) return;
+      if (!motMap[nome]) motMap[nome] = [];
+      motMap[nome].push(r);
+    });
+  });
+  // Ordenar cada motorista por SEQ.
+  Object.keys(motMap).forEach(nome => {
+    motMap[nome].sort((a,b) => (parseFloat(a['SEQ.']||0)) - (parseFloat(b['SEQ.']||0)));
+  });
+  // Retornar apenas os que têm mais de uma loja diferente
+  const multiplos = {};
+  Object.entries(motMap).forEach(([nome, rows]) => {
+    const lojas = [...new Set(rows.map(r => r['LOJA']||''))].filter(Boolean);
+    if (lojas.length > 1 || rows.length > 1) multiplos[nome] = rows;
+  });
+  return multiplos;
+}
+
+// Calcula múltiplas entregas usando os pares do arquivo TS
+// Cruza: tsData.grupos (loja1/loja2 por caminhão) com as linhas do optResult (que tem MOTORISTA)
+function calcularMultiplasEntregasTS() {
+  if (!tsData || !tsData.grupos) return {};
+  const multiplos = {};
+
+  tsData.grupos.forEach(grupo => {
+    // Monta lista de lojas do grupo (1ª entrega, 2ª entrega, ...)
+    const lojas = [grupo.loja1, grupo.loja2].filter(Boolean);
+    if (lojas.length < 2) return;
+
+    // Busca linhas no optResult que correspondam às lojas deste grupo
+    // A loja é normalizada para upper case e comparação parcial
+    const rowsDoGrupo = [];
+    lojas.forEach((loja, seqIdx) => {
+      if (!loja) return;
+      const lojaUp = String(loja).trim().toUpperCase();
+      // Tenta achar no rawData ou no optResult
+      let found = null;
+      if (optResult) {
+        const { docaMap, numerosDocas } = optResult;
+        numerosDocas.forEach(num => {
+          const d = docaMap[num];
+          if (!d) return;
+          d.rows.forEach(r => {
+            const rLoja = String(r['LOJA']||'').trim().toUpperCase();
+            if (rLoja === lojaUp || rLoja.includes(lojaUp) || lojaUp.includes(rLoja)) {
+              if (!found) found = r;
+            }
+          });
+        });
+      }
+      if (found) {
+        rowsDoGrupo.push({ ...found, _tsSeq: seqIdx + 1, _tsLoja: loja });
+      } else {
+        // Loja do TS não encontrada no optResult — cria registro virtual
+        rowsDoGrupo.push({
+          _tsSeq: seqIdx + 1, _tsLoja: loja,
+          'LOJA': loja, 'SEQ.': '', 'QTD NF': '', 'VOLUMES': '', 'PLACA': '', 'RG': '',
+          'MOTORISTA': grupo.motorista || '', _idx: -1, _fixo: false, _virtual: true
+        });
+      }
+    });
+
+    if (!rowsDoGrupo.length) return;
+
+    // Descobre o nome do motorista: usa dados do TS (motorista) ou da primeira linha encontrada
+    const motoristaNome = (grupo.motorista || rowsDoGrupo.find(r => r['MOTORISTA'])?.['MOTORISTA'] || `CAMINHÃO ${grupo.truck}`).trim().toUpperCase();
+    if (!multiplos[motoristaNome]) multiplos[motoristaNome] = [];
+    multiplos[motoristaNome].push(...rowsDoGrupo);
+  });
+
+  return multiplos;
+}
+
+function renderPainelMultiplasEntregas() {
+  const multiplos = calcularMultiplasEntregas();
+  const el = document.getElementById('painelMultiplas');
+  if (!el) return;
+  const nomes = Object.keys(multiplos);
+  if (!nomes.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+
+  const ordLabel = n => n===1?'1ª ENTREGA':n===2?'2ª ENTREGA':n===3?'3ª ENTREGA':`${n}ª ENTREGA`;
+
+  const isTSMode = !!(tsData && tsData.grupos && tsData.grupos.length > 0);
+  const sourceLabel = isTSMode
+    ? `<span class="badge" style="background:rgba(189,147,249,.15);color:var(--purple);font-size:9px;">🗂️ Sequência via TS</span>`
+    : `<span class="badge bg-cyan" style="font-size:9px;">via Otimização</span>`;
+
+  let html = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">`;
+  nomes.forEach(nome => {
+    const rows = multiplos[nome];
+    const placa = rows[0]['PLACA']||'';
+    const rg = rows[0]['RG']||'';
+    const isFixo = rows[0]._fixo;
+    html += `<div style="background:var(--surface2);border:1.5px solid ${isTSMode?'rgba(189,147,249,.3)':'rgba(99,102,241,.25)'};border-radius:10px;overflow:hidden;">
+      <div style="background:${isTSMode?'rgba(189,147,249,.1)':'rgba(99,102,241,.12)'};padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid ${isTSMode?'rgba(189,147,249,.2)':'rgba(99,102,241,.2)'};">
+        <div>
+          <div style="font-weight:700;font-size:13px;color:var(--text)">${isFixo?'⭐ ':''}${nome}</div>
+          <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:2px;">${placa?'Placa: '+placa:''}${rg?' · RG: '+rg:''}</div>
+        </div>
+        <span class="badge" style="background:${isTSMode?'rgba(189,147,249,.15)':'rgba(99,102,241,.15)'};color:${isTSMode?'var(--purple)':'var(--accent)'};">${rows.length} entrega${rows.length>1?'s':''}</span>
+      </div>
+      <table style="width:100%;font-size:11px;border-collapse:collapse;">
+        <thead><tr>
+          <th style="background:var(--surface3);padding:7px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);">Entrega</th>
+          <th style="background:var(--surface3);padding:7px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);">SEQ</th>
+          <th style="background:var(--surface3);padding:7px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);">Loja</th>
+          <th style="background:var(--surface3);padding:7px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);">NF</th>
+          <th style="background:var(--surface3);padding:7px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);">Lacre LV</th>
+        </tr></thead>
+        <tbody>`;
+    rows.forEach((r, idx) => {
+      const lv = lacresLV[r._idx] || '—';
+      const ord = ordLabel(idx + 1);
+      const altBg = idx % 2 === 0 ? 'transparent' : `rgba(${isTSMode?'189,147,249':'99,102,241'},.04)`;
+      const seqVal = isTSMode ? (r._tsSeq || idx+1) : (r['SEQ.']||'');
+      const lojaVal = r['LOJA'] || r._tsLoja || '';
+      const nfVal = r['QTD NF'] !== undefined && r['QTD NF'] !== '' ? r['QTD NF'] : (r._virtual ? '—' : 0);
+      html += `<tr style="background:${altBg};">
+        <td style="padding:7px 10px;border-bottom:1px solid rgba(37,44,63,.4);">
+          <span class="badge ${idx===0?'bg-green':idx===1?'bg-cyan':'bg-purple'}" style="font-size:9px;font-weight:800;">${ord}</span>
+        </td>
+        <td style="padding:7px 10px;border-bottom:1px solid rgba(37,44,63,.4);font-family:var(--mono);font-size:10px;color:var(--accent);">${seqVal}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid rgba(37,44,63,.4);font-weight:700;color:var(--text);">${lojaVal}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid rgba(37,44,63,.4);color:var(--text2);">${nfVal}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid rgba(37,44,63,.4);">
+          ${lv !== '—' ? `<span class="badge bg-gray" style="font-size:9px;">${lv}</span>` : '<span style="color:var(--text3)">—</span>'}
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  });
+  html += '</div>';
+  el.innerHTML = `
+    <div class="card-head" style="margin-bottom:12px;">
+      <div class="card-title"><span class="dot-accent"></span> Motoristas com Múltiplas Entregas ${sourceLabel}</div>
+      <span class="badge" style="background:${isTSMode?'rgba(189,147,249,.15)':'rgba(99,102,241,.15)'};color:${isTSMode?'var(--purple)':'var(--accent)'};">${nomes.length} motorista${nomes.length>1?'s':''}</span>
+    </div>
+    <div class="alert ${isTSMode?'alert-info':' alert-info'}" style="margin-bottom:14px;border-color:${isTSMode?'rgba(189,147,249,.25)':''};">
+      <span>${isTSMode?'🗂️':'🗺️'}</span>
+      <span>${isTSMode
+        ? `Sequência de entregas carregada do <b>arquivo TS</b> — aba OTIMIZ. ${nomes.length} motorista${nomes.length>1?'s com':'com'} rota dupla definida.`
+        : 'Motoristas com <b>mais de uma loja na rota</b> — separados por sequência de entrega conforme arquivo original.'
+      }</span>
+    </div>
+    ${html}`;
+}
+
+function gerarTextoMultiplasEntregas() {
+  const multiplos = calcularMultiplasEntregas();
+  const nomes = Object.keys(multiplos);
+  if (!nomes.length) return '';
+  const ordLabel = n => n===1?'1ª ENTREGA':n===2?'2ª ENTREGA':n===3?'3ª ENTREGA':`${n}ª ENTREGA`;
+  let txt = `\n${'═'.repeat(62)}\n`;
+  txt += `  MOTORISTAS COM MÚLTIPLAS ENTREGAS\n`;
+  txt += `${'═'.repeat(62)}\n`;
+  nomes.forEach(nome => {
+    const rows = multiplos[nome];
+    const placa = rows[0]['PLACA']||'—';
+    txt += `\n  🚛 ${nome}  |  Placa: ${placa}  |  ${rows.length} entregas\n`;
+    txt += `  ${'─'.repeat(42)}\n`;
+    rows.forEach((r, idx) => {
+      const lv = lacresLV[r._idx] || '—';
+      txt += `    ${ordLabel(idx+1)}: SEQ ${r['SEQ.']||''} → Loja: ${r['LOJA']||r._tsLoja||''}  |  NF: ${r['QTD NF']||'—'}  |  Lacre LV: ${lv}\n`;
+    });
+  });
+  return txt;
+}
+
+// ══════════════════════════════════
+//  TS FILE HANDLING
+// ══════════════════════════════════
+function handleTSFile(ev) { if (ev.target.files[0]) processTSFile(ev.target.files[0]); }
+
+function processTSFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      // Procura a aba OTIMIZ (case-insensitive)
+      const sheetName = wb.SheetNames.find(n => n.trim().toUpperCase() === 'OTIMIZ') || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+      // Lê a aba MOTORISTAS para cruzar nome do motorista por loja
+      const motSheetName = wb.SheetNames.find(n => n.trim().toUpperCase() === 'MOTORISTAS');
+      let motorMap = {}; // loja → { motorista, rg, cpf, placa }
+      if (motSheetName) {
+        const motWs = wb.Sheets[motSheetName];
+        const motRaw = XLSX.utils.sheet_to_json(motWs, { header: 1, defval: null });
+        // Row 0 = headers: LOJA, TIPO, MOTORISTA, RG, CPF, PLACA, ...
+        for (let i = 1; i < motRaw.length; i++) {
+          const row = motRaw[i];
+          const loja = row[0] ? String(row[0]).trim().toUpperCase() : null;
+          const motorista = row[2] ? String(row[2]).trim().toUpperCase() : null;
+          const rg   = row[3] ? String(row[3]).trim() : '';
+          const cpf  = row[4] ? String(row[4]).trim() : '';
+          const placa = row[5] ? String(row[5]).trim().toUpperCase() : '';
+          if (loja && motorista) motorMap[loja] = { motorista, rg, cpf, placa };
+        }
+      }
+
+      // Extrai pares da aba OTIMIZ
+      // Linha 1 (idx 1) = headers (SEQ., loja, VOLUMES, ...)
+      // A partir da linha 2 (idx 2): pares SEQ=1 / SEQ=2 em linhas consecutivas
+      // Col 0 = SEQ., Col 1 = loja, Col 7 = número do caminhão (só na linha seq=1)
+      const grupos = [];
+      let i = 2;
+      while (i < raw.length) {
+        const rowA = raw[i];
+        const rowB = raw[i + 1];
+        if (!rowA) { i += 2; continue; }
+
+        const seq1 = rowA[0];
+        const loja1 = rowA[1] ? String(rowA[1]).trim() : null;
+        const truck = rowA[7];
+        const loja2 = rowB && rowB[1] ? String(rowB[1]).trim() : null;
+
+        if (loja1) {
+          const loja1Up = loja1.toUpperCase();
+          const loja2Up = loja2 ? loja2.toUpperCase() : null;
+          const motInfo = motorMap[loja1Up] || (loja2Up ? motorMap[loja2Up] : null) || {};
+          grupos.push({
+            truck: truck || grupos.length + 1,
+            loja1: loja1,
+            loja2: loja2,
+            motorista: motInfo.motorista || null,
+            placa: motInfo.placa || '',
+            rg: motInfo.rg || '',
+            cpf: motInfo.cpf || '',
+          });
+        }
+        i += 2;
+      }
+
+      const gruposValidos = grupos.filter(g => g.loja1);
+      tsData = { grupos: gruposValidos, fileName: file.name, sheetName };
+
+      // Atualizar UI
+      document.getElementById('tsBadge').style.display = 'inline-flex';
+      document.getElementById('tsClearBtn').style.display = 'inline-flex';
+      const zone = document.getElementById('tsUploadZone');
+      zone.style.borderColor = 'rgba(189,147,249,.6)';
+      zone.style.background = 'rgba(189,147,249,.05)';
+
+      // Preview table
+      document.getElementById('tsPreviewSec').style.display = 'block';
+      document.getElementById('tsPreviewMsg').textContent =
+        `Arquivo "${file.name}" · aba ${sheetName} · ${gruposValidos.length} pares de entrega encontrados`;
+
+      let tHtml = `<table><thead><tr>
+        <th>Caminhão</th><th>1ª Entrega</th><th>2ª Entrega</th><th>Motorista</th><th>Placa</th>
+      </tr></thead><tbody>`;
+      gruposValidos.forEach(g => {
+        tHtml += `<tr>
+          <td><span class="badge bg-gray">${g.truck}</span></td>
+          <td><span class="badge bg-green" style="font-size:9px;">1ª</span> <b>${g.loja1}</b></td>
+          <td>${g.loja2 ? `<span class="badge bg-cyan" style="font-size:9px;">2ª</span> <b>${g.loja2}</b>` : '<span style="color:var(--text3)">—</span>'}</td>
+          <td style="font-size:11px;">${g.motorista || '<span style="color:var(--text3)">—</span>'}</td>
+          <td><span class="badge bg-gray" style="font-size:9px;">${g.placa || '—'}</span></td>
+        </tr>`;
+      });
+      tHtml += '</tbody></table>';
+      document.getElementById('tsPreviewTable').innerHTML = tHtml;
+
+      toast(`🗂️ TS carregado! ${gruposValidos.length} pares de entrega da aba ${sheetName}`, 'ok');
+
+      // Se já existe resultado de otimização, re-renderizar Passo 5
+      if (optResult) renderPainelMultiplasEntregas();
+    } catch(err) {
+      toast(`❌ Erro ao ler arquivo TS: ${err.message}`, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function clearTS() {
+  tsData = null;
+  document.getElementById('tsFi').value = '';
+  document.getElementById('tsBadge').style.display = 'none';
+  document.getElementById('tsClearBtn').style.display = 'none';
+  document.getElementById('tsPreviewSec').style.display = 'none';
+  const zone = document.getElementById('tsUploadZone');
+  zone.style.borderColor = '';
+  zone.style.background = '';
+  toast('🗑 Arquivo TS removido', 'ok');
+  if (optResult) renderPainelMultiplasEntregas();
+}
+
+// Verifica se ambos os arquivos foram carregados antes de avançar
+function avancarParaOtimizacao() {
+  const alertEl = document.getElementById('uploadBlockAlert');
+  if (!rawData.length && !tsData) {
+    if (alertEl) alertEl.style.display = 'flex';
+    toast('⚠️ Carregue a Lista de Cargas e o Arquivo TS antes de avançar', 'err');
+    return;
+  }
+  if (!rawData.length) {
+    if (alertEl) alertEl.style.display = 'flex';
+    toast('⚠️ Carregue a Lista de Cargas (arquivo principal) antes de avançar', 'err');
+    return;
+  }
+  if (!tsData) {
+    if (alertEl) alertEl.style.display = 'flex';
+    toast('⚠️ Carregue o Arquivo TS de Sequência antes de avançar', 'err');
+    return;
+  }
+  if (alertEl) alertEl.style.display = 'none';
+  wizNav(3);
+}
+
+// ══════════════════════════════════
+//  PAINEL SEQUÊNCIA DE ENTREGA (TS)
+// ══════════════════════════════════
+function renderSequenciaTS() {
+  const el = document.getElementById('painelSequenciaTS');
+  if (!el) return;
+  if (!tsData || !tsData.grupos || !tsData.grupos.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+
+  const grupos = tsData.grupos.filter(g => g.loja1);
+
+  let linhas = '';
+  grupos.forEach(g => {
+    const seq1 = obterSeqPorLoja(g.loja1);
+    const seq2 = g.loja2 ? obterSeqPorLoja(g.loja2) : '';
+    const loja1 = String(g.loja1||'').trim();
+    const loja2 = g.loja2 ? String(g.loja2).trim() : '—';
+    linhas += `<tr>
+      <td style="padding:4px 10px;border-bottom:1px solid rgba(37,44,63,.5);border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;font-weight:800;color:var(--green);text-align:center;">${seq1||'—'}</td>
+      <td style="padding:4px 10px;border-bottom:1px solid rgba(37,44,63,.5);border-right:2px solid var(--border2);font-weight:700;color:var(--text);font-size:11px;">${loja1}</td>
+      <td style="padding:4px 10px;border-bottom:1px solid rgba(37,44,63,.5);border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;font-weight:800;color:var(--accent);text-align:center;">${seq2||'—'}</td>
+      <td style="padding:4px 10px;border-bottom:1px solid rgba(37,44,63,.5);font-weight:700;color:var(--text);font-size:11px;">${loja2}</td>
+    </tr>`;
+  });
+
+  el.innerHTML = `
+    <div class="card-head" style="margin-bottom:8px;">
+      <div class="card-title"><span style="width:8px;height:8px;background:var(--purple);border-radius:50%;display:inline-block"></span> Sequência de Entrega por Lojas</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="badge" style="background:rgba(189,147,249,.15);color:var(--purple);">🗂️ via TS</span>
+        <span class="badge bg-gray">${grupos.length} rotas</span>
+        <button class="btn btn-sm" style="background:rgba(0,230,118,.12);color:var(--green);border:1px solid rgba(0,230,118,.25);font-size:11px;padding:5px 12px;" onclick="gerarExcelConferentes()">📋 Gerar Excel Conferentes</button>
+      </div>
+    </div>
+    <div class="tw" style="display:inline-block;min-width:340px;width:auto;">
+      <table style="width:auto;min-width:340px;border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th colspan="2" style="background:rgba(0,230,118,.12);padding:6px 10px;text-align:center;font-family:var(--cond);font-size:13px;color:var(--green);letter-spacing:.1em;border-bottom:2px solid rgba(0,230,118,.3);border-right:2px solid var(--border2);">1 &nbsp; ENTREGA</th>
+            <th colspan="2" style="background:rgba(99,102,241,.12);padding:6px 10px;text-align:center;font-family:var(--cond);font-size:13px;color:var(--accent);letter-spacing:.1em;border-bottom:2px solid rgba(99,102,241,.3);">2 &nbsp; ENTREGA</th>
+          </tr>
+          <tr>
+            <th style="background:var(--surface2);padding:5px 10px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;border-bottom:1px solid var(--border);border-right:1px solid var(--border);width:52px;">SEQ</th>
+            <th style="background:var(--surface2);padding:5px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;border-bottom:1px solid var(--border);border-right:2px solid var(--border2);">LOJA</th>
+            <th style="background:var(--surface2);padding:5px 10px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;border-bottom:1px solid var(--border);border-right:1px solid var(--border);width:52px;">SEQ</th>
+            <th style="background:var(--surface2);padding:5px 10px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;border-bottom:1px solid var(--border);">LOJA</th>
+          </tr>
+        </thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>`;
+}
+
+function obterSeqPorLoja(loja) {
+  if (!loja || !optResult) return '';
+  const lojaUp = String(loja).trim().toUpperCase();
+  const { docaMap, numerosDocas } = optResult;
+  let found = '';
+  numerosDocas.forEach(num => {
+    const d = docaMap[num];
+    if (!d) return;
+    d.rows.forEach(r => {
+      if (found) return;
+      const rLoja = String(r['LOJA']||'').trim().toUpperCase();
+      if (rLoja === lojaUp || rLoja.includes(lojaUp) || lojaUp.includes(rLoja)) {
+        found = r['SEQ.'] || '';
+      }
+    });
+  });
+  return found;
+}
+
+function gerarTextoSequenciaTS() {
+  if (!tsData || !tsData.grupos || !tsData.grupos.length) return '';
+  const grupos = tsData.grupos.filter(g => g.loja1);
+  if (!grupos.length) return '';
+  const col = (str, w) => String(str||'—').padEnd(w).slice(0, w);
+  let txt = `\n${'═'.repeat(62)}\n`;
+  txt += `  SEQUÊNCIA DE ENTREGA POR LOJAS\n`;
+  txt += `${'═'.repeat(62)}\n`;
+  txt += `  ${col('1ª ENTREGA',28)}  ${'2ª ENTREGA'}\n`;
+  txt += `  ${col('SEQ',5)} ${col('LOJA',20)}   ${col('SEQ',5)} ${col('LOJA',20)}\n`;
+  txt += `  ${'─'.repeat(56)}\n`;
+  grupos.forEach(g => {
+    const seq1 = col(obterSeqPorLoja(g.loja1), 5);
+    const loja1 = col(g.loja1, 20);
+    const seq2 = g.loja2 ? col(obterSeqPorLoja(g.loja2), 5) : col('—', 5);
+    const loja2 = col(g.loja2 || '—', 20);
+    txt += `  ${seq1} ${loja1}   ${seq2} ${loja2}\n`;
+  });
+  txt += `  ${'─'.repeat(56)}\n`;
+  return txt;
+}
+
+function addMotorista() {
+  const nome = document.getElementById('mNome').value.trim().toUpperCase();
+  const doca = document.getElementById('mDoca').value.trim();
+  const placa = document.getElementById('mPlaca').value.trim().toUpperCase();
+  if (!nome || !doca) { toast('⚠️ Preencha nome e doca', 'err'); return; }
+  if (motoristas.some(m => m.nome === nome)) { toast('⚠️ Motorista já cadastrado', 'err'); return; }
+  motoristas.push({ nome, doca, placa });
+  saveMot(); renderMotoristas(); updateBadges();
+  document.getElementById('mNome').value = '';
+  document.getElementById('mDoca').value = '';
+  document.getElementById('mPlaca').value = '';
+  toast(`✅ ${nome.split(' ')[0]} adicionado`, 'ok');
+}
+
+function removeMotorista(nome) {
+  motoristas = motoristas.filter(m => m.nome !== nome);
+  saveMot(); renderMotoristas(); updateBadges();
+}
+
+function importarFixosPadrao() {
+  let added = 0;
+  DEFAULT_FIXOS.forEach(f => { if (!motoristas.some(m => m.nome === f.nome)) { motoristas.push(f); added++; } });
+  saveMot(); renderMotoristas(); updateBadges();
+  toast(`✅ ${added} motorista(s) importado(s)`, 'ok');
+}
+
+function saveMot() {
+  try {
+    localStorage.setItem('logix_motoristas', JSON.stringify(motoristas));
+  } catch(e) {
+    limpiarLocalStorageSeBloqueado();
+    try { localStorage.setItem('logix_motoristas', JSON.stringify(motoristas)); } catch(e2) {}
+  }
+}
+
+function renderMotoristas() {
+  const ct = document.getElementById('countMot');
+  if (ct) ct.textContent = motoristas.length + ' cadastrados';
+  const tbl = document.getElementById('motTable');
+  if (!tbl) return;
+  if (!motoristas.length) { tbl.innerHTML = '<div class="empty"><div class="empty-icon">⭐</div><div class="empty-title">Nenhum cadastrado</div></div>'; return; }
+  tbl.innerHTML = motoristas.map(m => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;margin-bottom:6px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:34px;height:34px;border-radius:8px;background:rgba(255,184,0,.1);border:1px solid rgba(255,184,0,.2);display:flex;align-items:center;justify-content:center;font-size:15px;">⭐</div>
+      <div>
+        <div style="font-weight:700;font-size:13px;">${m.nome}</div>
+        <div style="font-size:11px;color:var(--text3);">Doca: ${m.doca}${m.placa?' · Placa: '+m.placa:''}</div>
+      </div>
+    </div>
+    <button class="ibtn" onclick="removeMotorista('${m.nome.replace(/'/g,"\\'")}')">🗑</button>
+  </div>`).join('');
+}
+
+// ══════════════════════════════════
+//  DOWNLOAD EXCEL
+// ══════════════════════════════════
+// Gera o workbook Excel e faz download. Retorna o nome do arquivo gerado.
+function downloadExcel() {
+  if (!optResult) { toast('⚠️ Execute a otimização primeiro', 'err'); return null; }
+  const { docaMap, numerosDocas } = optResult;
+
+  function fmtDocaOnda(doca, onda) { const ord = onda===1?'1°':onda===2?'2°':onda===3?'3°':onda+'°'; return `${doca} (${ord} onda)`; }
+
+  function mapRow(r) {
+    const nome = String(r['MOTORISTA']||'').trim().toUpperCase();
+    const doca05 = r._onda===1 ? '163 (1°onda)' : (r['DOCA-05']||r['DOCA05']||'');
+    const docaFmt = fmtDocaOnda(r._doca, r._onda);
+    return {
+      'DATA': r['DATA']||'', 'SEQ.': r['SEQ.']||'', 'LOJA': r['LOJA']||'',
+      'PRE-05': r['PRÉ-05']||r['PRE-05']||'', 'PRÉROMANEIO': r['PRÉ-ROMANEIO']||r['PRÉROMANEIO']||'',
+      'LACRE - LV': lacresLV[r._idx]||'', 'LACRE - BAÚ': lacresBau[nome]||'',
+      'QTD NF': r['QTD NF']||0, 'VOLUMES': r['VOLUMES']||0,
+      'DOCA-05': doca05, 'DOCA': docaFmt,
+      'CUB': parseFloat(r['CUB']||0).toFixed(2), 'TIPO': r['TIPO']||'',
+      'MOTORISTA': r['MOTORISTA']||'', 'RG': r['RG']||'', 'CPF': r['CPF']||'',
+      'PLACA': r['PLACA']||'', 'TELEFONE': r['TELEFONE']||'',
+    };
+  }
+
+  const allRows = [];
+  numerosDocas.forEach(num => { const d = docaMap[num]; if (d) d.rows.forEach(r => allRows.push(r)); });
+  allRows.sort((a, b) => (parseFloat(a['SEQ.']||0)) - (parseFloat(b['SEQ.']||0)));
+  const mapped = allRows.map(mapRow);
+
+  const wb = XLSX.utils.book_new();
+
+  function estilizarWs(ws, rows) {
+    if (!rows || !rows.length) return;
+    const cols = Object.keys(rows[0]);
+    const nRows = rows.length;
+    const grayS = { patternType:'solid', fgColor:{rgb:'D9D9D9'}, bgColor:{indexed:64} };
+    const hdrFont = { bold:true, name:'Arial', sz:10 };
+    const thinBdr = { style:'thin', color:{rgb:'BBBBBB'} };
+    const bdr = { top:thinBdr, bottom:thinBdr, left:thinBdr, right:thinBdr };
+    // Cabeçalhos cinza
+    cols.forEach((_, ci) => {
+      const addr = XLSX.utils.encode_cell({r:0, c:ci});
+      if (ws[addr]) ws[addr].s = { fill:grayS, font:hdrFont, alignment:{horizontal:'center',vertical:'center'}, border:bdr };
+    });
+    // Coluna DATA (índice 0) — cinza em todas as linhas de dado
+    for (let ri = 1; ri <= nRows; ri++) {
+      const addr = XLSX.utils.encode_cell({r:ri, c:0});
+      if (ws[addr]) ws[addr].s = { fill:grayS, font:{name:'Arial',sz:10}, alignment:{horizontal:'center',vertical:'center'}, border:bdr };
+    }
+  }
+
+  const ws = XLSX.utils.json_to_sheet(mapped);
+  ws['!cols'] = Object.keys(mapped[0]).map(k => ({ wch: Math.max(k.length+2, 12) }));
+  estilizarWs(ws, mapped);
+  XLSX.utils.book_append_sheet(wb, ws, 'CARGAS OTIMIZADAS');
+
+  numerosDocas.forEach(num => {
+    const d = docaMap[num];
+    if (!d || !d.rows.length) return;
+    const dRows = [...d.rows]
+      .sort((a, b) => (parseFloat(a['SEQ.']||0)) - (parseFloat(b['SEQ.']||0)))
+      .map(mapRow);
+    const wsD = XLSX.utils.json_to_sheet(dRows);
+    wsD['!cols'] = Object.keys(dRows[0]).map(k => ({ wch: Math.max(k.length+2, 12) }));
+    estilizarWs(wsD, dRows);
+    XLSX.utils.book_append_sheet(wb, wsD, `DOCA ${num}`);
+  });
+
+  const date = new Date().toISOString().split('T')[0];
+  const fname = `Cargas_Otimizadas_${date}.xlsx`;
+  try {
+    const wbout = XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles:true });
+    const blob = new Blob([wbout], { type:'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+  } catch(e) { XLSX.writeFile(wb, fname); }
+  toast('💾 Excel gerado com sucesso! Ordenado por SEQ. crescente.', 'ok');
+  return fname;
+}
+
+
+let _historicoSelecionado = null;
+
+// ══════════════════════════════════
+//  HISTÓRICO
+// ══════════════════════════════════
+function salvarHistorico() {
+  if (!optResult) return;
+  const { docaMap, numerosDocas } = optResult;
+  const allRows = [];
+  numerosDocas.forEach(num => { const d = docaMap[num]; if (d) d.rows.forEach(r => allRows.push(r)); });
+  const docasUsadas = numerosDocas.filter(n => docaMap[n]?.rows.length > 0);
+  const uniqueMots = [...new Set(allRows.map(r => String(r['MOTORISTA']||'').trim().toUpperCase()).filter(Boolean))];
+
+  const registro = {
+    id: Date.now(),
+    dataProcessamento: new Date().toISOString(),
+    dataFormatada: new Date().toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }),
+    totalCargas: allRows.length,
+    totalNF: allRows.reduce((a,r)=>a+(parseFloat(r['QTD NF']||0)||0),0),
+    totalVolumes: allRows.reduce((a,r)=>a+(parseFloat(r['VOLUMES']||0)||0),0),
+    cubagem: allRows.reduce((a,r)=>a+(parseFloat(r['CUB']||0)||0),0).toFixed(2),
+    docasUsadas: docasUsadas,
+    totalDocas: docasUsadas.length,
+    motoristas: uniqueMots,
+    totalMotoristas: uniqueMots.length,
+    lacresLV: Object.assign({}, lacresLV),
+    lacresBau: Object.assign({}, lacresBau),
+    totalLacresLV: Object.keys(lacresLV).length,
+    totalLacresBAU: Object.keys(lacresBau).length,
+    docaDetalhe: docasUsadas.map(num => ({
+      doca: num,
+      cargas: docaMap[num].rows.length,
+      nf: docaMap[num].nf,
+      vol: docaMap[num].vol,
+    })),
+    // Dados completos — apenas campos essenciais para não estourar localStorage
+    dadosCompletos: allRows.map(r => ({
+      'DATA': r['DATA']||'', 'SEQ.': r['SEQ.']||'', 'LOJA': r['LOJA']||'',
+      'PRÉ-05': r['PRÉ-05']||r['PRE-05']||'', 'PRÉ-ROMANEIO': r['PRÉ-ROMANEIO']||r['PRÉROMANEIO']||'',
+      'QTD NF': r['QTD NF']||0, 'VOLUMES': r['VOLUMES']||0, 'CUB': r['CUB']||0,
+      'TIPO': r['TIPO']||'', 'MOTORISTA': r['MOTORISTA']||'',
+      'RG': r['RG']||'', 'CPF': r['CPF']||'', 'PLACA': r['PLACA']||'', 'TELEFONE': r['TELEFONE']||'',
+      'DOCA-05': r['DOCA-05']||r['DOCA05']||'', 'DOCA': r['DOCA']||'',
+      _idx: r._idx, _doca: r._doca, _onda: r._onda, _fixo: r._fixo||false,
+    })),
+  };
+
+  // Salvar com tratamento robusto de quota
+  function tentarSalvar(hist) {
+    try {
+      localStorage.setItem('logix_historico', JSON.stringify(hist));
+      return true;
+    } catch(e) {
+      return false;
+    }
+  }
+
+  let historico = [];
+  try { historico = JSON.parse(localStorage.getItem('logix_historico') || '[]'); } catch(e) { historico = []; }
+  historico.unshift(registro);
+
+  // Tentar salvar com até 10 registros, reduzindo se der quota exceeded
+  let limite = Math.min(historico.length, 10);
+  while (limite > 0) {
+    const fatia = historico.slice(0, limite);
+    // Remover dadosCompletos dos mais antigos se ainda estiver cheio
+    if (limite <= 3) {
+      fatia.forEach((reg, i) => { if (i > 0) delete reg.dadosCompletos; });
+    }
+    if (tentarSalvar(fatia)) {
+      toast('📁 Operação salva no histórico', 'ok');
+      return;
+    }
+    limite--;
+  }
+
+  // Último recurso: salvar só o registro atual sem dadosCompletos
+  try {
+    const minimo = [{ ...registro }];
+    delete minimo[0].dadosCompletos;
+    localStorage.setItem('logix_historico', JSON.stringify(minimo));
+    toast('📁 Histórico salvo (compacto — localStorage cheio)', 'ok');
+  } catch(e) {
+    toast('⚠️ Não foi possível salvar no histórico (localStorage cheio)', 'err');
+  }
+}
+
+// ── HELPER: libera espaço no localStorage removendo dados pesados do histórico
+function limpiarLocalStorageSeBloqueado() {
+  try {
+    // Tentar compactar histórico removendo dadosCompletos dos registros antigos
+    const hist = JSON.parse(localStorage.getItem('logix_historico') || '[]');
+    if (hist.length > 0) {
+      // Remover dadosCompletos de todos exceto o mais recente
+      hist.forEach((reg, i) => { if (i > 0 && reg.dadosCompletos) delete reg.dadosCompletos; });
+      // Se ainda assim for grande, manter apenas 3 registros
+      const reduzido = hist.slice(0, 3).map(r => { delete r.dadosCompletos; return r; });
+      localStorage.setItem('logix_historico', JSON.stringify(reduzido));
+    }
+    // Remover template de email se muito grande
+    const tpl = localStorage.getItem('logix_email_template') || '';
+    if (tpl.length > 20000) localStorage.removeItem('logix_email_template');
+  } catch(e) {
+    // Se tudo falhar, limpar histórico completamente
+    try { localStorage.removeItem('logix_historico'); } catch(e2) {}
+  }
+}
+
+function renderHistorico() {
+  const historico = JSON.parse(localStorage.getItem('logix_historico') || '[]');
+  const listEl = document.getElementById('historicoList');
+  const emptyEl = document.getElementById('historicoEmpty');
+  if (!listEl) return;
+  if (!historico.length) {
+    emptyEl.style.display = 'block';
+    listEl.innerHTML = '';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  listEl.innerHTML = historico.map(reg => `
+    <div class="hist-card" style="cursor:default;">
+      <div class="hist-head">
+        <div>
+          <div class="hist-date">${reg.dataFormatada}</div>
+          <div class="hist-title">${reg.totalCargas} cargas · ${reg.totalDocas} docas · ${reg.totalMotoristas} motoristas</div>
+        </div>
+        <div class="flex gap-8">
+          <span class="badge bg-green">✅ ${reg.totalLacresLV} LV</span>
+          <span class="badge bg-gold">🔐 ${reg.totalLacresBAU} BAÚ</span>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 10px;" onclick="event.stopPropagation();verDetalheHistorico(${reg.id})">👁 Visualizar</button>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 10px;" onclick="event.stopPropagation();editarHistorico(${reg.id})">✏️ Editar</button>
+          <button class="btn btn-danger btn-sm" style="font-size:11px;padding:4px 10px;" onclick="event.stopPropagation();excluirHistorico(${reg.id})">🗑 Excluir</button>
+        </div>
+      </div>
+      <div class="hist-tags">
+        ${reg.docasUsadas.map(d=>`<span class="badge bg-cyan">Doca ${d}</span>`).join('')}
+        <span class="badge bg-purple">${reg.totalNF} NF</span>
+        <span class="badge bg-gray">${reg.totalVolumes} vol</span>
+        <span class="badge bg-gold">${reg.cubagem} m³</span>
+      </div>
+    </div>`).join('');
+}
+
+function verDetalheHistorico(id) {
+  const historico = JSON.parse(localStorage.getItem('logix_historico') || '[]');
+  const reg = historico.find(r => r.id === id);
+  if (!reg) return;
+  _historicoSelecionado = reg;
+  const detEl = document.getElementById('historicoDetalhe');
+  const contEl = document.getElementById('historicoDetalheCont');
+  const docaRows = reg.docaDetalhe.map(d => `<tr><td><span class="badge bg-cyan">Doca ${d.doca}</span></td><td>${d.cargas}</td><td>${d.nf}</td><td>${d.vol}</td></tr>`).join('');
+  const motRows = reg.motoristas.map(m => {
+    const bau = reg.lacresBau[m] || '—';
+    return `<tr><td>${m}</td><td>${bau ? `<span class="badge bg-gold">🔐 ${bau}</span>` : '<span style="color:var(--text3)">—</span>'}</td></tr>`;
+  }).join('');
+
+  // Mostrar dados completos se disponíveis
+  const temDadosCompletos = reg.dadosCompletos && reg.dadosCompletos.length > 0;
+
+  contEl.innerHTML = `
+    <div class="stats-grid" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="stat-lbl">Data</div><div style="font-size:12px;font-weight:700;margin-top:4px">${reg.dataFormatada}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Cargas</div><div class="stat-val" style="color:var(--accent)">${reg.totalCargas}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Total NF</div><div class="stat-val" style="color:var(--green)">${reg.totalNF}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Volumes</div><div class="stat-val" style="color:var(--purple)">${reg.totalVolumes}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Lacres LV</div><div class="stat-val" style="color:var(--accent)">${reg.totalLacresLV}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Lacres BAÚ</div><div class="stat-val" style="color:var(--gold)">${reg.totalLacresBAU}</div></div>
+    </div>
+    <div class="frow">
+      <div>
+        <div class="card-title" style="margin-bottom:8px;">🏭 Docas utilizadas</div>
+        <div class="tw"><table><thead><tr><th>Doca</th><th>Cargas</th><th>NF</th><th>Vol</th></tr></thead><tbody>${docaRows}</tbody></table></div>
+      </div>
+      <div>
+        <div class="card-title" style="margin-bottom:8px;">🚛 Motoristas e Lacres BAÚ</div>
+        <div class="tw"><table><thead><tr><th>Motorista</th><th>Lacre BAÚ</th></tr></thead><tbody>${motRows}</tbody></table></div>
+      </div>
+    </div>
+    ${!temDadosCompletos ? '<div class="alert alert-warn" style="margin-top:12px;"><span>⚠️</span><span>Este registro foi salvo em versão anterior sem dados completos. Reprocessar não disponível.</span></div>' : ''}`;
+  detEl.style.display = 'block';
+  detEl.scrollIntoView({ behavior: 'smooth' });
+}
+
+function abrirDownloads() {
+  // Tenta abrir a aba de downloads do Chrome via atalho de teclado simulado
+  // (funciona apenas no Chrome/Edge com file://)
+  try {
+    const w = window.open('about:downloads', '_blank');
+    if (!w) { toast('💡 Pressione Ctrl+J para ver seus Downloads', 'ok'); }
+  } catch(e) { toast('💡 Pressione Ctrl+J para ver seus Downloads', 'ok'); }
+}
+
+function gerarExcelHistorico() {
+  if (!_historicoSelecionado) { toast('⚠️ Selecione um registro do histórico', 'err'); return; }
+  const reg = _historicoSelecionado;
+  if (!reg.dadosCompletos || !reg.dadosCompletos.length) {
+    toast('⚠️ Dados completos não disponíveis neste registro', 'err'); return;
+  }
+  const wb = XLSX.utils.book_new();
+  function fmtDocaOnda(doca, onda) { const ord = onda===1?'1°':onda===2?'2°':onda===3?'3°':onda+'°'; return `${doca} (${ord} onda)`; }
+  function mapRowHist(r) {
+    const nome = String(r['MOTORISTA']||'').trim().toUpperCase();
+    const doca05 = r._onda===1 ? '163 (1°onda)' : (r['DOCA-05']||r['DOCA05']||'');
+    const docaFmt = fmtDocaOnda(r._doca, r._onda);
+    return {
+      'DATA': r['DATA']||'', 'SEQ.': r['SEQ.']||'', 'LOJA': r['LOJA']||'',
+      'PRE-05': r['PRÉ-05']||r['PRE-05']||'', 'PRÉROMANEIO': r['PRÉ-ROMANEIO']||r['PRÉROMANEIO']||'',
+      'LACRE - LV': (reg.lacresLV||{})[r._idx]||'', 'LACRE - BAÚ': (reg.lacresBau||{})[nome]||'',
+      'QTD NF': r['QTD NF']||0, 'VOLUMES': r['VOLUMES']||0,
+      'DOCA-05': doca05, 'DOCA': docaFmt,
+      'CUB': parseFloat(r['CUB']||0).toFixed(2), 'TIPO': r['TIPO']||'',
+      'MOTORISTA': r['MOTORISTA']||'', 'RG': r['RG']||'', 'CPF': r['CPF']||'',
+      'PLACA': r['PLACA']||'', 'TELEFONE': r['TELEFONE']||'',
+    };
+  }
+  // Ordena por SEQ. crescente
+  const mapped = [...reg.dadosCompletos]
+    .sort((a, b) => (parseFloat(a['SEQ.']||0)) - (parseFloat(b['SEQ.']||0)))
+    .map(mapRowHist);
+  const ws = XLSX.utils.json_to_sheet(mapped);
+  ws['!cols'] = Object.keys(mapped[0]).map(k => ({ wch: Math.max(k.length+2, 12) }));
+  XLSX.utils.book_append_sheet(wb, ws, 'CARGAS OTIMIZADAS');
+  // Por doca — também ordenado por SEQ.
+  const docasNoHist = [...new Set(reg.dadosCompletos.map(r => r._doca).filter(Boolean))];
+  docasNoHist.forEach(doca => {
+    const dRows = reg.dadosCompletos
+      .filter(r => r._doca === doca)
+      .sort((a, b) => (parseFloat(a['SEQ.']||0)) - (parseFloat(b['SEQ.']||0)))
+      .map(mapRowHist);
+    if (!dRows.length) return;
+    const wsD = XLSX.utils.json_to_sheet(dRows);
+    wsD['!cols'] = Object.keys(dRows[0]).map(k => ({ wch: Math.max(k.length+2, 12) }));
+    XLSX.utils.book_append_sheet(wb, wsD, `DOCA ${doca}`);
+  });
+  const dateStr = (reg.dataProcessamento||'').split('T')[0] || new Date().toISOString().split('T')[0];
+  const fname3 = `Historico_Cargas_${dateStr}.xlsx`;
+  try {
+    const wbout3 = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+    const blob3 = new Blob([wbout3], { type: 'application/octet-stream' });
+    const url3 = URL.createObjectURL(blob3);
+    const a3 = document.createElement('a');
+    a3.href = url3; a3.download = fname3;
+    document.body.appendChild(a3); a3.click();
+    setTimeout(() => { URL.revokeObjectURL(url3); a3.remove(); }, 1500);
+  } catch(e) { XLSX.writeFile(wb, fname3); }
+  toast('💾 Excel do histórico gerado! Ordenado por SEQ. crescente.', 'ok');
+}
+
+function reprocessarHistorico() {
+  if (!_historicoSelecionado) { toast('⚠️ Selecione um registro do histórico', 'err'); return; }
+  const reg = _historicoSelecionado;
+  if (!reg.dadosCompletos || !reg.dadosCompletos.length) {
+    toast('⚠️ Dados completos não disponíveis neste registro', 'err'); return;
+  }
+  if (!confirm(`Recarregar operação de ${reg.dataFormatada}? Isso substituirá os dados atuais.`)) return;
+  // Recarregar dados na aplicação
+  rawData = reg.dadosCompletos.map(r => {
+    // Remover campos internos _idx, _doca, _onda, _fixo para reprocessar limpo
+    const clean = Object.assign({}, r);
+    delete clean._idx; delete clean._doca; delete clean._onda; delete clean._fixo;
+    return clean;
+  });
+  lacresLV  = Object.assign({}, reg.lacresLV || {});
+  lacresBau = Object.assign({}, reg.lacresBau || {});
+  optResult = reg.optResult || null;
+  // Normalizar ondas ao carregar do histórico (corrige sequências com saltos)
+  if (optResult) normalizarOndas(optResult);
+  updateStatus();
+  unlockStep(optResult ? 5 : 3);
+  nav('historico');
+  toast('🔄 Dados do histórico carregados! Navegue até o Passo 3 para revisar.', 'ok');
+  if (optResult) { wizNav(5); }
+  else { wizNav(3); }
+}
+
+// ══════════════════════════════════
+//  SENHA — gerenciamento dinâmico
+// ══════════════════════════════════
+const SENHA_DEFAULT = 'logix2026';
+
+function getSenhaAtual() {
+  return localStorage.getItem('logix_senha') || SENHA_DEFAULT;
+}
+function getDicaSenha() {
+  return localStorage.getItem('logix_senha_dica') || '';
+}
+
+function pedirSenha(callback) {
+  const modal = document.getElementById('senhaModal');
+  document.getElementById('senhaInput').value = '';
+  document.getElementById('senhaErro').style.display = 'none';
+  modal.classList.add('show');
+  setTimeout(() => document.getElementById('senhaInput').focus(), 100);
+  window._senhaCb = callback;
+}
+
+function confirmarSenha() {
+  const val = document.getElementById('senhaInput').value.trim();
+  if (val !== getSenhaAtual()) {
+    document.getElementById('senhaErro').style.display = 'block';
+    document.getElementById('senhaInput').value = '';
+    setTimeout(() => document.getElementById('senhaInput').focus(), 50);
+    return;
+  }
+  document.getElementById('senhaModal').classList.remove('show');
+  if (window._senhaCb) { window._senhaCb(); window._senhaCb = null; }
+}
+
+function cancelarSenha() {
+  document.getElementById('senhaModal').classList.remove('show');
+  window._senhaCb = null;
+}
+
+// ── Abrir modal gerenciar senha (aba alterar)
+function abrirGerenciarSenha() {
+  document.getElementById('senhaAtualInput').value = '';
+  document.getElementById('senhaNova1Input').value = '';
+  document.getElementById('senhaNova2Input').value = '';
+  document.getElementById('senhaDicaInput').value = getDicaSenha();
+  document.getElementById('senhaAlterarErro').style.display = 'none';
+  senhaTab('alterar');
+  document.getElementById('senhaGerenciarModal').classList.add('show');
+  setTimeout(() => document.getElementById('senhaAtualInput').focus(), 100);
+}
+
+// ── Abrir modal gerenciar senha (aba recuperar) — chamado ao clicar "Esqueci"
+function abrirRecuperarSenha() {
+  const dica = getDicaSenha();
+  document.getElementById('dicaRecuperacaoTxt').textContent = dica || '(nenhuma dica cadastrada — defina uma ao alterar a senha)';
+  document.getElementById('senhaRedefinirInput').value = '';
+  document.getElementById('senhaRedefinir2Input').value = '';
+  document.getElementById('senhaRecuperarErro').style.display = 'none';
+  senhaTab('recuperar');
+  document.getElementById('senhaGerenciarModal').classList.add('show');
+  setTimeout(() => document.getElementById('senhaRedefinirInput').focus(), 100);
+}
+
+function fecharGerenciarSenha() {
+  document.getElementById('senhaGerenciarModal').classList.remove('show');
+}
+
+function senhaTab(aba) {
+  document.getElementById('painelAlterar').style.display   = aba === 'alterar'   ? 'block' : 'none';
+  document.getElementById('painelRecuperar').style.display = aba === 'recuperar' ? 'block' : 'none';
+  document.getElementById('tabAlterar').style.background   = aba === 'alterar'   ? 'var(--accent)' : 'transparent';
+  document.getElementById('tabAlterar').style.color        = aba === 'alterar'   ? '#fff' : 'var(--text2)';
+  document.getElementById('tabRecuperar').style.background = aba === 'recuperar' ? 'var(--accent)' : 'transparent';
+  document.getElementById('tabRecuperar').style.color      = aba === 'recuperar' ? '#fff' : 'var(--text2)';
+}
+
+function salvarNovaSenha() {
+  const atual  = document.getElementById('senhaAtualInput').value.trim();
+  const nova1  = document.getElementById('senhaNova1Input').value.trim();
+  const nova2  = document.getElementById('senhaNova2Input').value.trim();
+  const dica   = document.getElementById('senhaDicaInput').value.trim();
+  const errEl  = document.getElementById('senhaAlterarErro');
+  const mostrarErro = (msg) => { errEl.textContent = '❌ ' + msg; errEl.style.display = 'block'; };
+  errEl.style.display = 'none';
+  if (!atual)         { mostrarErro('Informe a senha atual.'); return; }
+  if (atual !== getSenhaAtual()) { mostrarErro('Senha atual incorreta.'); document.getElementById('senhaAtualInput').value = ''; return; }
+  if (!nova1)         { mostrarErro('Informe a nova senha.'); return; }
+  if (nova1.length < 4) { mostrarErro('A nova senha deve ter pelo menos 4 caracteres.'); return; }
+  if (nova1 !== nova2) { mostrarErro('As senhas não coincidem.'); document.getElementById('senhaNova2Input').value = ''; return; }
+  localStorage.setItem('logix_senha', nova1);
+  if (dica) localStorage.setItem('logix_senha_dica', dica);
+  fecharGerenciarSenha();
+  toast('🔐 Senha alterada com sucesso!', 'ok');
+}
+
+function redefinirSenhaComDica() {
+  const nova1 = document.getElementById('senhaRedefinirInput').value.trim();
+  const nova2 = document.getElementById('senhaRedefinir2Input').value.trim();
+  const errEl = document.getElementById('senhaRecuperarErro');
+  const mostrarErro = (msg) => { errEl.textContent = '❌ ' + msg; errEl.style.display = 'block'; };
+  errEl.style.display = 'none';
+  if (!nova1)           { mostrarErro('Informe a nova senha.'); return; }
+  if (nova1.length < 4) { mostrarErro('A nova senha deve ter pelo menos 4 caracteres.'); return; }
+  if (nova1 !== nova2)  { mostrarErro('As senhas não coincidem.'); document.getElementById('senhaRedefinir2Input').value = ''; return; }
+  localStorage.setItem('logix_senha', nova1);
+  fecharGerenciarSenha();
+  toast('🔐 Senha redefinida com sucesso!', 'ok');
+}
+
+function excluirHistorico(id) {
+  pedirSenha(() => {
+    let hist = JSON.parse(localStorage.getItem('logix_historico') || '[]');
+    hist = hist.filter(r => r.id !== id);
+    localStorage.setItem('logix_historico', JSON.stringify(hist));
+    if (_historicoSelecionado && _historicoSelecionado.id === id) {
+      _historicoSelecionado = null;
+      document.getElementById('historicoDetalhe').style.display = 'none';
+    }
+    renderHistorico();
+    toast('🗑 Registro excluído', 'ok');
+  });
+}
+
+function editarHistorico(id) {
+  const hist = JSON.parse(localStorage.getItem('logix_historico') || '[]');
+  const reg = hist.find(r => r.id === id);
+  if (!reg) return;
+  const novoNome = prompt('Editar descrição do registro (deixe vazio para manter):', reg.nomePersonalizado || '');
+  if (novoNome === null) return; // cancelou
+  reg.nomePersonalizado = novoNome.trim();
+  localStorage.setItem('logix_historico', JSON.stringify(hist));
+  renderHistorico();
+  toast('✅ Registro atualizado', 'ok');
+}
+
+function limparHistorico() {
+  pedirSenha(() => {
+    localStorage.removeItem('logix_historico');
+    _historicoSelecionado = null;
+    document.getElementById('historicoDetalhe').style.display = 'none';
+    renderHistorico();
+    toast('🗑 Histórico limpo', 'ok');
+  });
+}
+
+function liberarEspacoLocalStorage() {
+  let totalAntes = 0;
+  for (const key in localStorage) { if (localStorage.hasOwnProperty(key)) totalAntes += (localStorage[key].length + key.length) * 2; }
+  const antesKB = Math.round(totalAntes / 1024);
+
+  limpiarLocalStorageSeBloqueado();
+
+  let totalDepois = 0;
+  for (const key in localStorage) { if (localStorage.hasOwnProperty(key)) totalDepois += (localStorage[key].length + key.length) * 2; }
+  const depoisKB = Math.round(totalDepois / 1024);
+
+  const liberadoKB = antesKB - depoisKB;
+  toast(`🔧 Espaço liberado: ${liberadoKB}KB (antes: ${antesKB}KB → depois: ${depoisKB}KB)`, 'ok');
+  renderHistorico();
+}
+
+// ══════════════════════════════════
+//  FINALIZAR PROCESSO
+// ══════════════════════════════════
+function finalizarProcesso() {
+  if (!optResult) { toast('⚠️ Nenhuma otimização para finalizar', 'err'); return; }
+  salvarHistorico();
+  const btn = document.getElementById('btnFinalizarProcesso');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>✅</span><span>Processo Finalizado!</span>';
+    btn.style.background = 'rgba(0,230,118,.2)';
+    btn.style.color = 'var(--green)';
+    btn.style.border = '1px solid rgba(0,230,118,.3)';
+  }
+  toast('✅ Processo finalizado e salvo no histórico!', 'ok');
+}
+
+// ══════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════
+function updateBadges() {
+  document.getElementById('nmot').textContent = motoristas.length;
+  document.getElementById('smot').textContent = motoristas.length;
+  document.getElementById('smot').style.display = motoristas.length > 0 ? 'flex' : 'none';
+}
+
+function updateStatus() {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('statusTxt');
+  if (rawData.length > 0) {
+    dot.classList.add('on');
+    txt.textContent = `${rawData.length} cargas · ordenadas por SEQ.`;
+  } else {
+    dot.classList.remove('on');
+    txt.textContent = 'Aguardando upload';
+  }
+}
+
+function toast(msg, type = 'ok') {
+  const c = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = `toast-item ${type}`;
+  el.innerHTML = `<span>${msg}</span>`;
+  c.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .4s'; setTimeout(() => el.remove(), 400); }, 2800);
+}
+
+// Close modal on overlay click
+
+
+// ══════════════════════════════════
+//  ESTILO EXCEL — cabeçalho cinza + coluna DATA cinza
+// ══════════════════════════════════
+function aplicarEstiloExcel(ws, data) {
+  if (!data || !data.length) return;
+  const cols = Object.keys(data[0]);
+  const totalRows = data.length;
+  const GRAY = { patternType: 'solid', fgColor: { rgb: 'D9D9D9' } };
+  const thin = (rgb) => ({ style: 'thin', color: { rgb: rgb || 'BBBBBB' } });
+  const bdr = { top: thin(), bottom: thin(), left: thin(), right: thin() };
+
+  // ── Cabeçalhos linha 0: todos cinza, negrito, centralizado ──
+  cols.forEach((col, ci) => {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: ci });
+    ws[addr] = ws[addr] || { v: col, t: 's' };
+    ws[addr].s = { font: { bold: true, name: 'Arial', sz: 10, color: { rgb: '000000' } }, fill: GRAY, alignment: { horizontal: 'center', vertical: 'center' }, border: bdr };
+  });
+
+  // ── Coluna DATA (col A, índice 0): células de dados também cinza ──
+  const dataIdx = cols.indexOf('DATA');
+  if (dataIdx >= 0) {
+    for (let r = 1; r <= totalRows; r++) {
+      const addr = XLSX.utils.encode_cell({ r, c: dataIdx });
+      ws[addr] = ws[addr] || { v: '', t: 's' };
+      ws[addr].s = { font: { name: 'Arial', sz: 10 }, fill: GRAY, alignment: { horizontal: 'center', vertical: 'center' }, border: bdr };
+    }
+  }
+}
+
+// ══════════════════════════════════
+//  EXCEL CONFERENTES
+// ══════════════════════════════════
+function gerarExcelConferentes() {
+  if (!optResult) { toast('⚠️ Otimização não realizada ainda', 'err'); return; }
+  if (!tsData || !tsData.grupos || !tsData.grupos.length) { toast('⚠️ Carregue o arquivo TS primeiro', 'err'); return; }
+
+  const { docaMap, numerosDocas } = optResult;
+  let allRows = [];
+  numerosDocas.forEach(num => { const d = docaMap[num]; if (d) d.rows.forEach(r => allRows.push(r)); });
+  allRows.sort((a, b) => parseFloat(a['SEQ.']||0) - parseFloat(b['SEQ.']||0));
+  const grupos = tsData.grupos.filter(g => g.loja1);
+  const totalRows = Math.max(allRows.length, grupos.length);
+
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+
+  const GRAY  = { patternType:'solid', fgColor:{rgb:'D9D9D9'}, bgColor:{indexed:64} };
+  const WHITE = { patternType:'solid', fgColor:{rgb:'FFFFFF'}, bgColor:{indexed:64} };
+  const ZEBRA = { patternType:'solid', fgColor:{rgb:'F2F2F2'}, bgColor:{indexed:64} };
+  const thin  = (rgb) => ({ style:'thin', color:{rgb: rgb||'BBBBBB'} });
+  const bdr   = { top:thin(), bottom:thin(), left:thin(), right:thin() };
+  const bdrG  = { top:thin('70AD47'), bottom:thin('70AD47'), left:thin('70AD47'), right:thin('70AD47') };
+  const bdrB  = { top:thin('4472C4'), bottom:thin('4472C4'), left:thin('4472C4'), right:thin('4472C4') };
+
+  const sc = (r,c,v,t,s) => { const a=XLSX.utils.encode_cell({r,c}); ws[a]={v,t,s}; };
+
+  // ── Cabeçalhos linha 0 — todos cinza ──
+  const hdrConf = ['SEQ.','LOJA','PRÉ-ROMANEIO','LACRE - BAÚ','VOLUMES','DOCA','CUB'];
+  hdrConf.forEach((h,i) => sc(0,i,h,'s',{fill:GRAY,font:{bold:true,name:'Arial',sz:10},alignment:{horizontal:'center',vertical:'center'},border:bdr}));
+  sc(0,7,'','s',{fill:WHITE}); // col H separador
+  ['SEQ','1ª ENTREGA','SEQ','2ª ENTREGA'].forEach((h,i) => {
+    sc(0,8+i,h,'s',{fill:GRAY,font:{bold:true,name:'Arial',sz:10},alignment:{horizontal:'center',vertical:'center'},border:i<2?bdrG:bdrB});
+  });
+
+  // ── Linhas de dados ──
+  for (let ri=0; ri<totalRows; ri++) {
+    const fill = ri%2===0 ? WHITE : ZEBRA;
+
+    if (ri < allRows.length) {
+      const r = allRows[ri];
+      const nome = String(r['MOTORISTA']||'').trim().toUpperCase();
+      const vals = [
+        {v:parseFloat(r['SEQ.']||0),t:'n',a:'center'},
+        {v:String(r['LOJA']||'').trim(),t:'s',a:'left'},
+        {v:String(r['PRÉ-ROMANEIO']||r['PRÉROMANEIO']||''),t:'s',a:'left'},
+        {v:String(lacresBau[nome]||''),t:'s',a:'left'},
+        {v:parseFloat(r['VOLUMES']||0),t:'n',a:'right'},
+        {v:String(r['DOCA']||''),t:'s',a:'left'},
+        {v:parseFloat(parseFloat(r['CUB']||0).toFixed(2)),t:'n',a:'right'},
+      ];
+      vals.forEach(({v,t,a},ci) => sc(ri+1,ci,v,t,{fill,font:{name:'Arial',sz:10,bold:ci===0},alignment:{horizontal:a,vertical:'center'},border:bdr}));
+    }
+    sc(ri+1,7,'','s',{fill:WHITE}); // col H
+
+    if (ri < grupos.length) {
+      const g = grupos[ri];
+      const s1=obterSeqPorLoja(g.loja1), s2=g.loja2?obterSeqPorLoja(g.loja2):'';
+      const l1=String(g.loja1||'').trim(), l2=g.loja2?String(g.loja2).trim():'';
+      sc(ri+1,8, s1?parseFloat(s1):'', s1?'n':'s', {fill,font:{bold:true,name:'Arial',sz:10,color:{rgb:'375623'}},alignment:{horizontal:'center',vertical:'center'},border:bdrG});
+      sc(ri+1,9, l1,'s', {fill,font:{bold:true,name:'Arial',sz:10},alignment:{horizontal:'left',vertical:'center'},border:bdrG});
+      sc(ri+1,10,s2?parseFloat(s2):'', s2?'n':'s', {fill,font:{bold:true,name:'Arial',sz:10,color:{rgb:'1F3864'}},alignment:{horizontal:'center',vertical:'center'},border:bdrB});
+      sc(ri+1,11,l2,'s', {fill,font:{bold:true,name:'Arial',sz:10},alignment:{horizontal:'left',vertical:'center'},border:bdrB});
+    }
+  }
+
+  ws['!ref'] = XLSX.utils.encode_range({r:0,c:0},{r:totalRows,c:11});
+  ws['!cols'] = [{wch:6},{wch:14},{wch:24},{wch:14},{wch:10},{wch:20},{wch:8},{wch:2},{wch:6},{wch:16},{wch:6},{wch:16}];
+  ws['!rows'] = [{hpt:18}];
+  for (let i=1;i<=totalRows;i++) ws['!rows'].push({hpt:16});
+
+  XLSX.utils.book_append_sheet(wb, ws, 'CONFERENTES');
+  const dateStr = new Date().toISOString().split('T')[0];
+  try {
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array', cellStyles:true});
+    const blob = new Blob([wbout], {type:'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=`Conferentes_${dateStr}.xlsx`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1500);
+    toast('📋 Excel dos conferentes gerado!','ok');
+  } catch(e) { toast('❌ Erro: '+e.message,'err'); }
+}
 </script>
+</body>
+</html>
