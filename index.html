@@ -4956,6 +4956,20 @@
             const [filtro, setFiltro] = useState('');
             const [editando, setEditando] = useState(null);
             const [dadosEdicao, setDadosEdicao] = useState({});
+            const [historicoConferentes, setHistoricoConferentes] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('historicoConferentes') || '[]'); } catch { return []; }
+            });
+            const [showSugestoes, setShowSugestoes] = useState(false);
+
+            const salvarHistoricoConferente = (nome) => {
+                if (!nome || !nome.trim()) return;
+                const nomes = nome.split(/[,;]/).map(n => n.trim()).filter(Boolean);
+                setHistoricoConferentes(prev => {
+                    const novos = [...new Set([...prev, ...nomes])].slice(0, 30);
+                    try { localStorage.setItem('historicoConferentes', JSON.stringify(novos)); } catch {}
+                    return novos;
+                });
+            };
 
             const operacoesFiltradas = useMemo(() => {
                 const ops = filtro 
@@ -4984,13 +4998,16 @@
                     ...dadosEdicao,
                     status: calcularStatus(meta, dadosEdicao.termino)
                 };
+                if (dadosEdicao.conferentes) salvarHistoricoConferente(dadosEdicao.conferentes);
                 await onEditar(operacaoAtualizada);
                 setEditando(null);
+                setShowSugestoes(false);
             };
 
             const handleCancelar = () => {
                 setEditando(null);
                 setDadosEdicao({});
+                setShowSugestoes(false);
             };
 
             const handleChange = (campo, valor) => {
@@ -5022,6 +5039,7 @@
                                     <th className="px-4 py-3 text-left">Cubagem</th>
                                     <th className="px-4 py-3 text-left">Início</th>
                                     <th className="px-4 py-3 text-left">Término</th>
+                                    <th className="px-4 py-3 text-left">🔍 Conferentes</th>
                                     <th className="px-4 py-3 text-left">Status</th>
                                     <th className="px-4 py-3 text-left">Ações</th>
                                 </tr>
@@ -5029,7 +5047,7 @@
                             <tbody>
                                 {operacoesFiltradas.length === 0 ? (
                                     <tr>
-                                        <td colSpan="9" className="text-center py-8 text-gray-500">
+                                        <td colSpan="10" className="text-center py-8 text-gray-500">
                                             Nenhuma operação encontrada
                                         </td>
                                     </tr>
@@ -5095,6 +5113,31 @@
                                                             className="w-full p-2 border rounded input-edit"
                                                         />
                                                     </td>
+                                                    <td className="px-4 py-3" style={{position:'relative',minWidth:'180px'}}>
+                                                        <input
+                                                            type="text"
+                                                            value={dadosEdicao.conferentes || ''}
+                                                            onChange={(e) => { handleChange('conferentes', e.target.value); setShowSugestoes(true); }}
+                                                            onFocus={() => setShowSugestoes(true)}
+                                                            onBlur={() => setTimeout(() => setShowSugestoes(false), 200)}
+                                                            className="w-full p-2 border rounded input-edit"
+                                                            placeholder="Nome(s) do(s) conferente(s)..."
+                                                            autoComplete="off"
+                                                        />
+                                                        {showSugestoes && historicoConferentes.length > 0 && (
+                                                            <div style={{position:'absolute',top:'100%',left:0,right:0,background:'white',border:'2px solid #667eea',borderRadius:'8px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',zIndex:999,maxHeight:'160px',overflowY:'auto'}}>
+                                                                <div style={{padding:'4px 8px',fontSize:'10px',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',borderBottom:'1px solid #f3f4f6'}}>Histórico de conferentes</div>
+                                                                {historicoConferentes.filter(n => !dadosEdicao.conferentes || n.toLowerCase().includes((dadosEdicao.conferentes||'').toLowerCase())).map((nome, i) => (
+                                                                    <div key={i}
+                                                                        onMouseDown={() => { handleChange('conferentes', nome); setShowSugestoes(false); }}
+                                                                        style={{padding:'7px 10px',cursor:'pointer',fontSize:'13px',color:'#374151',borderBottom:'1px solid #f9fafb'}}
+                                                                        onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
+                                                                        onMouseLeave={e => e.currentTarget.style.background='white'}
+                                                                    >🔍 {nome}</div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td className="px-4 py-3">
                                                         <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${calcularStatus(dadosEdicao.meta, dadosEdicao.termino)}`}>
                                                             {calcularStatus(dadosEdicao.meta, dadosEdicao.termino).toUpperCase()}
@@ -5126,6 +5169,7 @@
                                                     <td className="px-4 py-3">{op.cubagem}</td>
                                                     <td className="px-4 py-3">{op.inicio}</td>
                                                     <td className="px-4 py-3">{op.termino}</td>
+                                                    <td className="px-4 py-3">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                     <td className="px-4 py-3">
                                                         <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${op.status}`}>
                                                             {op.status.toUpperCase()}
