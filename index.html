@@ -3060,6 +3060,7 @@ function liberarEspacoLocalStorage() {
 function finalizarProcesso() {
   if (!optResult) { toast('⚠️ Nenhuma otimização para finalizar', 'err'); return; }
   salvarHistorico();
+  renderHistorico(); // ⚠️ correção: a lista de histórico só era desenhada no carregamento da página — o registro salvo ficava "invisível" até recarregar o navegador
   const btn = document.getElementById('btnFinalizarProcesso');
   if (btn) {
     btn.disabled = true;
