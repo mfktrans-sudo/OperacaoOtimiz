@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LOGIX v11 — Otimizador de Cargas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=Outfit:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" rel="stylesheet">
 <style>
@@ -251,6 +254,31 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 </head>
 <body>
 
+<!-- ══════ LOGIN GATE (Firebase Auth) ══════ -->
+<div id="loginGate" style="position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;">
+  <div class="card" style="width:100%;max-width:360px;">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:22px;">
+      <div class="logo-mark" style="width:44px;height:44px;font-size:20px;">🚛</div>
+      <div style="font-family:var(--cond);font-size:22px;letter-spacing:.08em;">LOGIX <span style="color:var(--accent)">OPTIMIZER</span></div>
+      <div class="logo-sub" style="color:var(--text3);">Acesso restrito à equipe</div>
+    </div>
+    <div class="fg">
+      <label class="flabel">E-mail</label>
+      <input class="finput" id="loginEmail" type="email" placeholder="seu.email@empresa.com" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('loginSenha').focus()">
+    </div>
+    <div class="fg">
+      <label class="flabel">Senha</label>
+      <input class="finput" id="loginSenha" type="password" placeholder="Sua senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+    </div>
+    <div id="loginErro" style="display:none;padding:10px 14px;background:rgba(255,61,90,.1);border:1px solid rgba(255,61,90,.25);border-radius:8px;color:var(--red);font-size:12px;margin-bottom:12px;"></div>
+    <button class="btn btn-accent btn-lg" id="loginBtn" onclick="fazerLogin()" style="width:100%;justify-content:center;">🔐 Entrar</button>
+    <div class="help mt-12" style="text-align:center;">Use o login e senha cadastrados para você pelo administrador.</div>
+  </div>
+</div>
+
+<!-- APP (visível somente após login) -->
+<div id="appContainer" style="display:none;">
+
 <!-- TOPBAR -->
 <div class="topbar">
   <div class="logo">
@@ -263,6 +291,9 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
   <div class="topbar-status">
     <div class="dot" id="dot"></div>
     <span id="statusTxt">Aguardando upload</span>
+    <span style="width:1px;height:16px;background:var(--border);margin:0 4px;"></span>
+    <span id="userEmailTag" style="color:var(--text2);"></span>
+    <button class="btn btn-ghost btn-sm" onclick="fazerLogout()" title="Sair">🚪 Sair</button>
   </div>
 </div>
 
@@ -849,7 +880,78 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 </div>
 
 <div id="toast"></div>
+
+</div>
+<!-- FIM appContainer -->
+
 <script>
+// ══════════════════════════════════
+//  FIREBASE AUTH — LOGIN DA EQUIPE
+// ══════════════════════════════════
+// ⚠️ SUBSTITUA pelos dados do SEU projeto Firebase
+// (Console Firebase → ⚙️ Configurações do projeto → Geral → "Seus apps" → SDK setup and configuration)
+const firebaseConfig = {
+  apiKey: "SUA_API_KEY_AQUI",
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+  projectId: "SEU_PROJETO",
+  storageBucket: "SEU_PROJETO.appspot.com",
+  messagingSenderId: "SEU_SENDER_ID",
+  appId: "SEU_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+
+function fazerLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  const erroEl = document.getElementById('loginErro');
+  const btn = document.getElementById('loginBtn');
+  erroEl.style.display = 'none';
+  if (!email || !senha) {
+    erroEl.textContent = '⚠️ Preencha e-mail e senha.';
+    erroEl.style.display = 'block';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  firebase.auth().signInWithEmailAndPassword(email, senha)
+    .catch(err => {
+      erroEl.textContent = traduzErroFirebase(err.code);
+      erroEl.style.display = 'block';
+    })
+    .finally(() => { btn.disabled = false; btn.textContent = '🔐 Entrar'; });
+}
+
+function fazerLogout() {
+  firebase.auth().signOut();
+}
+
+function traduzErroFirebase(code) {
+  const mapa = {
+    'auth/invalid-email': '⚠️ E-mail inválido.',
+    'auth/user-disabled': '⚠️ Este usuário foi desativado.',
+    'auth/user-not-found': '⚠️ Usuário não encontrado.',
+    'auth/wrong-password': '⚠️ Senha incorreta.',
+    'auth/invalid-credential': '⚠️ E-mail ou senha incorretos.',
+    'auth/too-many-requests': '⚠️ Muitas tentativas. Tente novamente em instantes.',
+    'auth/network-request-failed': '⚠️ Falha de conexão. Verifique sua internet.',
+  };
+  return mapa[code] || ('⚠️ Erro ao entrar (' + code + ')');
+}
+
+firebase.auth().onAuthStateChanged(user => {
+  const gate = document.getElementById('loginGate');
+  const app = document.getElementById('appContainer');
+  if (user) {
+    gate.style.display = 'none';
+    app.style.display = 'block';
+    const tag = document.getElementById('userEmailTag');
+    if (tag) tag.textContent = user.email;
+  } else {
+    gate.style.display = 'flex';
+    app.style.display = 'none';
+    document.getElementById('loginSenha').value = '';
+  }
+});
+
 // ══════════════════════════════════
 //  STATE
 // ══════════════════════════════════
@@ -2715,7 +2817,12 @@ function aplicarEstiloExcel(ws, data) {
 // ══════════════════════════════════
 //  EXCEL CONFERENTES
 // ══════════════════════════════════
-function gerarExcelConferentes() {
+// OBS: esta exportação usa a biblioteca ExcelJS (e não o xlsx.js usado no
+// resto do sistema), pois a versão gratuita do xlsx.js (SheetJS Community
+// Edition) NÃO grava estilos de célula (cor de fundo, bordas, negrito) no
+// arquivo final — por isso o Excel saía sem nenhuma borda/cor, mesmo o
+// código "tentando" aplicá-las. O ExcelJS grava esses estilos de verdade.
+async function gerarExcelConferentes() {
   if (!optResult) { toast('⚠️ Otimização não realizada ainda', 'err'); return; }
   if (!tsData || !tsData.grupos || !tsData.grupos.length) { toast('⚠️ Carregue o arquivo TS primeiro', 'err'); return; }
 
@@ -2726,68 +2833,103 @@ function gerarExcelConferentes() {
   const grupos = tsData.grupos.filter(g => g.loja1);
   const totalRows = Math.max(allRows.length, grupos.length);
 
-  const wb = XLSX.utils.book_new();
-  const ws = {};
+  // A doca de cada carga fica em r._doca (não em r['DOCA'] — essa era a causa
+  // da coluna F sair em branco). Formatamos junto com a onda, ex: "164 (1° onda)".
+  function fmtDocaOnda(doca, onda) {
+    if (!doca) return '';
+    const ord = onda===1?'1°':onda===2?'2°':onda===3?'3°':(onda?onda+'°':'');
+    return ord ? `${doca} (${ord} onda)` : String(doca);
+  }
 
-  const GRAY  = { patternType:'solid', fgColor:{rgb:'D9D9D9'}, bgColor:{indexed:64} };
-  const WHITE = { patternType:'solid', fgColor:{rgb:'FFFFFF'}, bgColor:{indexed:64} };
-  const ZEBRA = { patternType:'solid', fgColor:{rgb:'F2F2F2'}, bgColor:{indexed:64} };
-  const thin  = (rgb) => ({ style:'thin', color:{rgb: rgb||'BBBBBB'} });
-  const bdr   = { top:thin(), bottom:thin(), left:thin(), right:thin() };
-  const bdrG  = { top:thin('70AD47'), bottom:thin('70AD47'), left:thin('70AD47'), right:thin('70AD47') };
-  const bdrB  = { top:thin('4472C4'), bottom:thin('4472C4'), left:thin('4472C4'), right:thin('4472C4') };
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('CONFERENTES');
 
-  const sc = (r,c,v,t,s) => { const a=XLSX.utils.encode_cell({r,c}); ws[a]={v,t,s}; };
+  const grayFill  = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9D9D9'} };
+  const whiteFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFFFFF'} };
+  const zebraFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF2F2F2'} };
+  const thin = (rgb) => ({ style:'thin', color:{argb:'FF'+(rgb||'BBBBBB')} });
+  const bdr  = { top:thin(), bottom:thin(), left:thin(), right:thin() };
+  const bdrG = { top:thin('70AD47'), bottom:thin('70AD47'), left:thin('70AD47'), right:thin('70AD47') };
+  const bdrB = { top:thin('4472C4'), bottom:thin('4472C4'), left:thin('4472C4'), right:thin('4472C4') };
 
-  // ── Cabeçalhos linha 0 — todos cinza ──
+  ws.columns = [
+    {width:6},{width:14},{width:24},{width:14},{width:10},{width:22},{width:8},
+    {width:2},{width:6},{width:16},{width:6},{width:16}
+  ];
+
+  // ── Cabeçalho ──
   const hdrConf = ['SEQ.','LOJA','PRÉ-ROMANEIO','LACRE - BAÚ','VOLUMES','DOCA','CUB'];
-  hdrConf.forEach((h,i) => sc(0,i,h,'s',{fill:GRAY,font:{bold:true,name:'Arial',sz:10},alignment:{horizontal:'center',vertical:'center'},border:bdr}));
-  sc(0,7,'','s',{fill:WHITE}); // col H separador
-  ['SEQ','1ª ENTREGA','SEQ','2ª ENTREGA'].forEach((h,i) => {
-    sc(0,8+i,h,'s',{fill:GRAY,font:{bold:true,name:'Arial',sz:10},alignment:{horizontal:'center',vertical:'center'},border:i<2?bdrG:bdrB});
+  const headerRow = ws.getRow(1);
+  hdrConf.forEach((h,i) => {
+    const cell = headerRow.getCell(i+1);
+    cell.value = h; cell.font = {bold:true,name:'Arial',size:10}; cell.fill = grayFill;
+    cell.alignment = {horizontal:'center',vertical:'middle'}; cell.border = bdr;
   });
+  const sepHdr = headerRow.getCell(8); sepHdr.fill = whiteFill;
+  ['SEQ','1ª ENTREGA','SEQ','2ª ENTREGA'].forEach((h,i) => {
+    const cell = headerRow.getCell(9+i);
+    cell.value = h; cell.font = {bold:true,name:'Arial',size:10}; cell.fill = grayFill;
+    cell.alignment = {horizontal:'center',vertical:'middle'}; cell.border = i<2?bdrG:bdrB;
+  });
+  headerRow.height = 18;
 
   // ── Linhas de dados ──
   for (let ri=0; ri<totalRows; ri++) {
-    const fill = ri%2===0 ? WHITE : ZEBRA;
+    const fill = ri%2===0 ? whiteFill : zebraFill;
+    const row = ws.getRow(ri+2);
+    row.height = 16;
 
     if (ri < allRows.length) {
       const r = allRows[ri];
       const nome = String(r['MOTORISTA']||'').trim().toUpperCase();
       const vals = [
-        {v:parseFloat(r['SEQ.']||0),t:'n',a:'center'},
-        {v:String(r['LOJA']||'').trim(),t:'s',a:'left'},
-        {v:String(r['PRÉ-ROMANEIO']||r['PRÉROMANEIO']||''),t:'s',a:'left'},
-        {v:String(lacresBau[nome]||''),t:'s',a:'left'},
-        {v:parseFloat(r['VOLUMES']||0),t:'n',a:'right'},
-        {v:String(r['DOCA']||''),t:'s',a:'left'},
-        {v:parseFloat(parseFloat(r['CUB']||0).toFixed(2)),t:'n',a:'right'},
+        {v:parseFloat(r['SEQ.']||0), a:'center', bold:true},
+        {v:String(r['LOJA']||'').trim(), a:'left'},
+        {v:String(r['PRÉ-ROMANEIO']||r['PRÉROMANEIO']||''), a:'left'},
+        {v:String(lacresBau[nome]||''), a:'left'},
+        {v:parseFloat(r['VOLUMES']||0), a:'right'},
+        {v:fmtDocaOnda(r._doca, r._onda), a:'left'},
+        {v:parseFloat(parseFloat(r['CUB']||0).toFixed(2)), a:'right'},
       ];
-      vals.forEach(({v,t,a},ci) => sc(ri+1,ci,v,t,{fill,font:{name:'Arial',sz:10,bold:ci===0},alignment:{horizontal:a,vertical:'center'},border:bdr}));
+      vals.forEach((cfg,ci) => {
+        const cell = row.getCell(ci+1);
+        cell.value = cfg.v; cell.font = {name:'Arial',size:10,bold:!!cfg.bold};
+        cell.fill = fill; cell.alignment = {horizontal:cfg.a,vertical:'middle'}; cell.border = bdr;
+      });
+    } else {
+      for (let ci=0; ci<7; ci++) { const c=row.getCell(ci+1); c.fill=fill; c.border=bdr; }
     }
-    sc(ri+1,7,'','s',{fill:WHITE}); // col H
+    row.getCell(8).fill = whiteFill; // separador
 
     if (ri < grupos.length) {
       const g = grupos[ri];
       const s1=obterSeqPorLoja(g.loja1), s2=g.loja2?obterSeqPorLoja(g.loja2):'';
       const l1=String(g.loja1||'').trim(), l2=g.loja2?String(g.loja2).trim():'';
-      sc(ri+1,8, s1?parseFloat(s1):'', s1?'n':'s', {fill,font:{bold:true,name:'Arial',sz:10,color:{rgb:'375623'}},alignment:{horizontal:'center',vertical:'center'},border:bdrG});
-      sc(ri+1,9, l1,'s', {fill,font:{bold:true,name:'Arial',sz:10},alignment:{horizontal:'left',vertical:'center'},border:bdrG});
-      sc(ri+1,10,s2?parseFloat(s2):'', s2?'n':'s', {fill,font:{bold:true,name:'Arial',sz:10,color:{rgb:'1F3864'}},alignment:{horizontal:'center',vertical:'center'},border:bdrB});
-      sc(ri+1,11,l2,'s', {fill,font:{bold:true,name:'Arial',sz:10},alignment:{horizontal:'left',vertical:'center'},border:bdrB});
+
+      const c9 = row.getCell(9);
+      c9.value = s1?parseFloat(s1):''; c9.font = {bold:true,name:'Arial',size:10,color:{argb:'FF375623'}};
+      c9.fill = fill; c9.alignment = {horizontal:'center',vertical:'middle'}; c9.border = bdrG;
+
+      const c10 = row.getCell(10);
+      c10.value = l1; c10.font = {bold:true,name:'Arial',size:10};
+      c10.fill = fill; c10.alignment = {horizontal:'left',vertical:'middle'}; c10.border = bdrG;
+
+      const c11 = row.getCell(11);
+      c11.value = s2?parseFloat(s2):''; c11.font = {bold:true,name:'Arial',size:10,color:{argb:'FF1F3864'}};
+      c11.fill = fill; c11.alignment = {horizontal:'center',vertical:'middle'}; c11.border = bdrB;
+
+      const c12 = row.getCell(12);
+      c12.value = l2; c12.font = {bold:true,name:'Arial',size:10};
+      c12.fill = fill; c12.alignment = {horizontal:'left',vertical:'middle'}; c12.border = bdrB;
+    } else {
+      for (let ci=8; ci<12; ci++) { const c=row.getCell(ci+1); c.fill=fill; c.border = ci<10?bdrG:bdrB; }
     }
   }
 
-  ws['!ref'] = XLSX.utils.encode_range({r:0,c:0},{r:totalRows,c:11});
-  ws['!cols'] = [{wch:6},{wch:14},{wch:24},{wch:14},{wch:10},{wch:20},{wch:8},{wch:2},{wch:6},{wch:16},{wch:6},{wch:16}];
-  ws['!rows'] = [{hpt:18}];
-  for (let i=1;i<=totalRows;i++) ws['!rows'].push({hpt:16});
-
-  XLSX.utils.book_append_sheet(wb, ws, 'CONFERENTES');
   const dateStr = new Date().toISOString().split('T')[0];
   try {
-    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array', cellStyles:true});
-    const blob = new Blob([wbout], {type:'application/octet-stream'});
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href=url; a.download=`Conferentes_${dateStr}.xlsx`;
