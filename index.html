@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LOGIX v11 — Otimizador de Cargas</title>
+<title>LOGIX v12 — Otimizador de Cargas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -231,6 +231,12 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 .hist-date { font-family: var(--mono); font-size: 10px; color: var(--text3); }
 .hist-title { font-weight: 700; font-size: 13px; color: var(--text); }
 .hist-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+.hist-year, .hist-month, .hist-day { margin-bottom: 8px; }
+.hist-year > summary, .hist-month > summary, .hist-day > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 8px; color: var(--text); }
+.hist-year > summary::-webkit-details-marker, .hist-month > summary::-webkit-details-marker, .hist-day > summary::-webkit-details-marker { display: none; }
+.hist-year > summary { font-family: var(--cond); font-size: 20px; font-weight: 700; background: var(--surface2); border: 1px solid var(--border2); }
+.hist-month > summary { font-family: var(--cond); font-size: 15px; font-weight: 600; color: var(--text2); background: var(--surface); border: 1px solid var(--border); }
+.hist-day > summary { font-size: 12px; font-weight: 700; color: var(--text2); background: transparent; border: 1px dashed var(--border2); }
 
 /* ─── SCROLLBAR ─── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -285,12 +291,15 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
     <div class="logo-mark">🚛</div>
     <div>
       <div>LOGIX <span style="color:var(--accent)">OPTIMIZER</span></div>
-      <div class="logo-sub" style="color:var(--accent)">v11 · 2026 · SEQUÊNCIA DE ENTREGA + VALIDAÇÃO TS</div>
+      <div class="logo-sub" style="color:var(--accent)">v12 · 2026 · SEQUÊNCIA DE ENTREGA + VALIDAÇÃO TS</div>
     </div>
   </div>
   <div class="topbar-status">
     <div class="dot" id="dot"></div>
     <span id="statusTxt">Aguardando upload</span>
+    <span style="width:1px;height:16px;background:var(--border);margin:0 4px;"></span>
+    <div class="dot" id="autosaveDot" style="background:var(--text3);"></div>
+    <span id="autosaveTxt">Aguardando alterações</span>
     <span style="width:1px;height:16px;background:var(--border);margin:0 4px;"></span>
     <span id="userEmailTag" style="color:var(--text2);"></span>
     <button class="btn btn-ghost btn-sm" onclick="fazerLogout()" title="Sair">🚪 Sair</button>
@@ -732,14 +741,6 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
   </div>
   <div class="cfg-grid">
     <div class="card">
-      <div class="card-head"><div class="card-title"><span class="dot-accent"></span> Exportação Excel</div></div>
-      <div class="fg">
-        <label class="flabel">Incluir aba por doca</label>
-        <select class="fselect" id="cfgAbaDoca"><option value="1" selected>Sim — aba separada por doca</option><option value="0">Não — apenas aba geral</option></select>
-        <div class="help">Cada doca terá sua própria aba no Excel exportado</div>
-      </div>
-    </div>
-    <div class="card">
       <div class="card-head"><div class="card-title"><span class="dot-accent"></span> Coluna do Motorista</div></div>
       <div class="fg">
         <label class="flabel">Usar coluna</label>
@@ -753,6 +754,14 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
         <label class="flabel">Filtrar por TIPO (opcional)</label>
         <input class="finput" id="cfgTipo" placeholder="ex: AG, SECO — vazio = todos">
         <div class="help">Deixe em branco para processar todos os tipos</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="dot-accent"></span> 🔐 Senha de Administrador</div></div>
+      <div class="fg">
+        <div class="help" style="margin-bottom:10px;">Protege exclusões (registros do histórico) contra remoção acidental. Cadastre ou altere a senha abaixo.</div>
+        <div id="cfgSenhaStatus" style="font-size:12px;color:var(--text2);margin-bottom:12px;"></div>
+        <button class="btn btn-accent" onclick="abrirGerenciarSenha()">🔑 Cadastrar / Alterar Senha</button>
       </div>
     </div>
   </div>
@@ -776,7 +785,50 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
   <div id="historicoEmpty" class="empty" style="display:none;">
     <div class="empty-icon">📁</div>
     <div class="empty-title">Nenhuma operação registrada</div>
-    <div class="empty-sub">O histórico será salvo automaticamente ao finalizar a otimização</div>
+    <div class="empty-sub">O histórico será salvo automaticamente ao clicar em "Finalizar Processo" no Passo 5</div>
+  </div>
+
+  <!-- Filtros avançados -->
+  <div class="card" id="historicoFiltros" style="display:none;">
+    <div class="card-head">
+      <div class="card-title"><span class="dot-accent"></span> Filtros Avançados</div>
+      <button class="btn btn-ghost btn-sm" onclick="limparFiltrosHistorico()">✕ Limpar filtros</button>
+    </div>
+    <div class="frow-4">
+      <div class="fg">
+        <label class="flabel">Data inicial</label>
+        <input class="finput" type="date" id="fhDataIni" oninput="aplicarFiltrosHistorico()">
+      </div>
+      <div class="fg">
+        <label class="flabel">Data final</label>
+        <input class="finput" type="date" id="fhDataFim" oninput="aplicarFiltrosHistorico()">
+      </div>
+      <div class="fg">
+        <label class="flabel">Doca</label>
+        <input class="finput" id="fhDoca" placeholder="ex: 164" oninput="aplicarFiltrosHistorico()">
+      </div>
+      <div class="fg">
+        <label class="flabel">Responsável</label>
+        <input class="finput" id="fhResponsavel" placeholder="e-mail do usuário" oninput="aplicarFiltrosHistorico()">
+      </div>
+    </div>
+    <div class="frow-3 mt-12">
+      <div class="fg">
+        <label class="flabel">Pesquisa inteligente</label>
+        <input class="finput" id="fhBusca" placeholder="🔍 Loja, motorista, placa, doca..." oninput="aplicarFiltrosHistorico()">
+      </div>
+      <div class="fg">
+        <label class="flabel">Status</label>
+        <select class="fselect" id="fhStatus" onchange="aplicarFiltrosHistorico()">
+          <option value="">Todos</option>
+          <option value="finalizado">Finalizado</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="flabel">Resultado</label>
+        <div style="padding-top:9px;font-size:12px;color:var(--text2);" id="fhContagem">—</div>
+      </div>
+    </div>
   </div>
 
   <div id="historicoList"></div>
@@ -946,6 +998,7 @@ firebase.auth().onAuthStateChanged(user => {
     app.style.display = 'block';
     const tag = document.getElementById('userEmailTag');
     if (tag) tag.textContent = user.email;
+    usuarioResponsavel = user.email || '';
   } else {
     gate.style.display = 'flex';
     app.style.display = 'none';
@@ -966,6 +1019,9 @@ let docasDisponiveis = [];
 let wizardStep = 1;
 let wizardMaxUnlocked = 1;
 let tsData = null; // dados carregados do arquivo TS (sequência de entregas)
+let processoIniciadoEm = null; // timestamp de início da operação em andamento (para "tempo total da operação")
+let usuarioResponsavel = ''; // e-mail do usuário logado (Firebase Auth)
+let autoSaveTimer = null; // debounce do AutoSave
 
 const DOCAS_PRESET = ['156','157','158','159','160','161','162','163','164','165','166','167','168','169','170','171','172','173','174','175'];
 const DEFAULT_FIXOS = [
@@ -989,7 +1045,66 @@ window.onload = () => {
   updateBadges();
   setupDnD();
   renderHistorico();
+  restaurarEstadoSessao();
 };
+
+// ══════════════════════════════════
+//  AUTOSAVE — salva o estado de trabalho em andamento a cada alteração
+//  e restaura exatamente de onde o usuário parou ao reabrir o sistema.
+// ══════════════════════════════════
+function agendarAutoSave() {
+  clearTimeout(autoSaveTimer);
+  const dot = document.getElementById('autosaveDot');
+  const txt = document.getElementById('autosaveTxt');
+  if (dot) dot.style.background = 'var(--gold)';
+  if (txt) txt.textContent = 'Salvando alterações…';
+  autoSaveTimer = setTimeout(salvarEstadoSessao, 500);
+}
+
+function salvarEstadoSessao() {
+  const estado = {
+    rawData, lacresLV, lacresBau, optResult, tsData, colsDetected,
+    docasDisponiveis, motoristas, wizardStep, wizardMaxUnlocked,
+    processoIniciadoEm,
+  };
+  try {
+    localStorage.setItem('logix_estado_sessao', JSON.stringify(estado));
+  } catch (e) {
+    limpiarLocalStorageSeBloqueado();
+    try { localStorage.setItem('logix_estado_sessao', JSON.stringify(estado)); } catch (e2) { /* sem espaço — ignora silenciosamente */ }
+  }
+  const dot = document.getElementById('autosaveDot');
+  const txt = document.getElementById('autosaveTxt');
+  const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (dot) { dot.style.background = 'var(--green)'; dot.style.boxShadow = '0 0 8px var(--green)'; }
+  if (txt) txt.textContent = `🟢 Última sincronização às ${hora}`;
+}
+
+function restaurarEstadoSessao() {
+  let estado = null;
+  try { estado = JSON.parse(localStorage.getItem('logix_estado_sessao') || 'null'); } catch (e) { estado = null; }
+  if (!estado) return;
+
+  rawData = estado.rawData || [];
+  lacresLV = estado.lacresLV || {};
+  lacresBau = estado.lacresBau || {};
+  optResult = estado.optResult || null;
+  tsData = estado.tsData || null;
+  colsDetected = estado.colsDetected || [];
+  processoIniciadoEm = estado.processoIniciadoEm || null;
+  if (Array.isArray(estado.docasDisponiveis) && estado.docasDisponiveis.length) docasDisponiveis = estado.docasDisponiveis;
+
+  if (rawData.length) {
+    renderPreview();
+    updateStatus();
+  }
+
+  const passoRestaurado = estado.wizardMaxUnlocked || 1;
+  wizardMaxUnlocked = passoRestaurado;
+  wizNav(estado.wizardStep || 1);
+
+  if (rawData.length) toast('🟢 Sessão anterior restaurada automaticamente', 'ok');
+}
 
 function verificarQuotaLocalStorage() {
   try {
@@ -1045,6 +1160,8 @@ function wizNav(step) {
   if (step === 3) renderOtimPage();
   if (step === 4) renderLacreTable();
   if (step === 5) renderResultado();
+
+  agendarAutoSave();
 }
 
 function nav(page) {
@@ -1054,6 +1171,7 @@ function nav(page) {
   if (el) { el.classList.add('act'); el.style.removeProperty('display'); }
   const si = document.getElementById('s-' + page);
   if (si) si.classList.add('act');
+  if (page === 'config') atualizarStatusSenha();
 }
 
 function voltarWizard() { wizNav(wizardStep); }
@@ -1099,6 +1217,7 @@ function saveDocas() {
     limpiarLocalStorageSeBloqueado();
     try { localStorage.setItem('logix_docas', JSON.stringify(docasDisponiveis)); } catch(e2) {}
   }
+  agendarAutoSave();
 }
 
 function renderDocasDisp() {
@@ -1177,11 +1296,13 @@ function processFile(file) {
         if (bau) { const nome = String(r['MOTORISTA']||'').trim().toUpperCase(); if (nome && !lacresBau[nome]) lacresBau[nome] = String(bau); }
       });
       colsDetected = Object.keys(rawData[0]).filter(c => !c.startsWith('_'));
+      if (!processoIniciadoEm) processoIniciadoEm = Date.now();
       renderPreview();
       updateStatus();
       updateBadges();
       unlockStep(3);
       toast(`✅ ${rawData.length} registros carregados`, 'ok');
+      agendarAutoSave();
       // Só avança automaticamente se o arquivo TS também estiver carregado
       if (tsData && tsData.grupos && tsData.grupos.length > 0) {
         setTimeout(() => { wizNav(3); }, 800);
@@ -1229,11 +1350,13 @@ function fmtDate(d) {
 
 function clearFile() {
   rawData = []; lacresLV = {}; lacresBau = {}; optResult = null;
+  processoIniciadoEm = null;
   document.getElementById('previewSec').style.display = 'none';
   document.getElementById('fi').value = '';
   wizardMaxUnlocked = 2;
   updateStatus(); updateBadges();
   toast('🗑 Dados limpos', 'ok');
+  agendarAutoSave();
 }
 
 function confirmarLimparTudo() {
@@ -1248,6 +1371,7 @@ function limparTodosDados() {
   optResult = null;
   tsData = null;
   colsDetected = [];
+  processoIniciadoEm = null;
 
   const fi = document.getElementById('fi');
   if (fi) fi.value = '';
@@ -1276,6 +1400,7 @@ function limparTodosDados() {
   wizNav(2);
 
   toast('✅ Todos os dados foram limpos. Pronto para novo processo!', 'ok');
+  agendarAutoSave();
 }
 
 // ══════════════════════════════════
@@ -1434,6 +1559,7 @@ function executarOtimizacao() {
   unlockStep(4);
   toast(`🚀 ${dados.length} cargas distribuídas em ${numerosDocas.length} docas`, 'ok');
   wizNav(4);
+  agendarAutoSave();
 }
 
 // ══════════════════════════════════
@@ -1532,6 +1658,7 @@ function setLacreLV(idx, val) {
     el.classList.toggle('missing', !val);
   });
   updateLacreProgress();
+  agendarAutoSave();
 }
 
 function setLacreBau(nome, val) {
@@ -1545,6 +1672,7 @@ function setLacreBau(nome, val) {
   });
   if (val) toast(`🔄 Lacre BAÚ replicado → ${nome.split(' ')[0]}`, 'ok');
   updateLacreProgress();
+  agendarAutoSave();
 }
 
 function updateLacreProgress() {
@@ -1994,6 +2122,7 @@ function processTSFile(file) {
 
       const gruposValidos = grupos.filter(g => g.loja1);
       tsData = { grupos: gruposValidos, fileName: file.name, sheetName };
+      agendarAutoSave();
 
       // Atualizar UI
       document.getElementById('tsBadge').style.display = 'inline-flex';
@@ -2195,6 +2324,7 @@ function saveMot() {
     limpiarLocalStorageSeBloqueado();
     try { localStorage.setItem('logix_motoristas', JSON.stringify(motoristas)); } catch(e2) {}
   }
+  agendarAutoSave();
 }
 
 function renderMotoristas() {
@@ -2219,11 +2349,19 @@ function renderMotoristas() {
 //  DOWNLOAD EXCEL
 // ══════════════════════════════════
 // Gera o workbook Excel e faz download. Retorna o nome do arquivo gerado.
-function downloadExcel() {
+// OBS: assim como no Excel de Conferentes, esta exportação usa ExcelJS (não
+// o xlsx.js) para que as bordas/cores realmente sejam gravadas no arquivo.
+// A pedido do usuário, as abas separadas "DOCA X" foram removidas — só a
+// aba "CARGAS OTIMIZADAS" (com todas as informações) é gerada agora.
+async function downloadExcel() {
   if (!optResult) { toast('⚠️ Execute a otimização primeiro', 'err'); return null; }
   const { docaMap, numerosDocas } = optResult;
 
-  function fmtDocaOnda(doca, onda) { const ord = onda===1?'1°':onda===2?'2°':onda===3?'3°':onda+'°'; return `${doca} (${ord} onda)`; }
+  function fmtDocaOnda(doca, onda) {
+    if (!doca) return '';
+    const ord = onda===1?'1°':onda===2?'2°':onda===3?'3°':(onda?onda+'°':'');
+    return ord ? `${doca} (${ord} onda)` : String(doca);
+  }
 
   function mapRow(r) {
     const nome = String(r['MOTORISTA']||'').trim().toUpperCase();
@@ -2245,57 +2383,58 @@ function downloadExcel() {
   numerosDocas.forEach(num => { const d = docaMap[num]; if (d) d.rows.forEach(r => allRows.push(r)); });
   allRows.sort((a, b) => (parseFloat(a['SEQ.']||0)) - (parseFloat(b['SEQ.']||0)));
   const mapped = allRows.map(mapRow);
+  if (!mapped.length) { toast('⚠️ Nenhuma carga otimizada para exportar', 'err'); return null; }
 
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('CARGAS OTIMIZADAS');
 
-  function estilizarWs(ws, rows) {
-    if (!rows || !rows.length) return;
-    const cols = Object.keys(rows[0]);
-    const nRows = rows.length;
-    const grayS = { patternType:'solid', fgColor:{rgb:'D9D9D9'}, bgColor:{indexed:64} };
-    const hdrFont = { bold:true, name:'Arial', sz:10 };
-    const thinBdr = { style:'thin', color:{rgb:'BBBBBB'} };
-    const bdr = { top:thinBdr, bottom:thinBdr, left:thinBdr, right:thinBdr };
-    // Cabeçalhos cinza
-    cols.forEach((_, ci) => {
-      const addr = XLSX.utils.encode_cell({r:0, c:ci});
-      if (ws[addr]) ws[addr].s = { fill:grayS, font:hdrFont, alignment:{horizontal:'center',vertical:'center'}, border:bdr };
+  const grayFill  = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9D9D9'} };
+  const whiteFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFFFFF'} };
+  const zebraFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF2F2F2'} };
+  const thin = { style:'thin', color:{argb:'FFBBBBBB'} };
+  const bdr  = { top:thin, bottom:thin, left:thin, right:thin };
+
+  const cols = Object.keys(mapped[0]);
+  const numericCols = new Set(['QTD NF','VOLUMES']);
+  ws.columns = cols.map(k => ({ width: Math.max(k.length + 2, 12) }));
+
+  // ── Cabeçalho ──
+  const headerRow = ws.getRow(1);
+  cols.forEach((h,i) => {
+    const cell = headerRow.getCell(i+1);
+    cell.value = h; cell.font = {bold:true,name:'Arial',size:10}; cell.fill = grayFill;
+    cell.alignment = {horizontal:'center',vertical:'middle'}; cell.border = bdr;
+  });
+  headerRow.height = 18;
+
+  // ── Linhas de dados — todas as células com borda ──
+  mapped.forEach((rowData, ri) => {
+    const row = ws.getRow(ri+2);
+    const zebra = ri%2===0 ? whiteFill : zebraFill;
+    cols.forEach((k, ci) => {
+      const cell = row.getCell(ci+1);
+      let v = rowData[k];
+      if (numericCols.has(k)) v = parseFloat(v || 0);
+      cell.value = v;
+      cell.font = { name:'Arial', size:10 };
+      cell.fill = (k === 'DATA') ? grayFill : zebra; // coluna DATA sempre cinza, como no original
+      cell.alignment = { horizontal: numericCols.has(k) ? 'right' : (k==='SEQ.'||k==='CUB' ? 'center' : 'left'), vertical:'middle' };
+      cell.border = bdr;
     });
-    // Coluna DATA (índice 0) — cinza em todas as linhas de dado
-    for (let ri = 1; ri <= nRows; ri++) {
-      const addr = XLSX.utils.encode_cell({r:ri, c:0});
-      if (ws[addr]) ws[addr].s = { fill:grayS, font:{name:'Arial',sz:10}, alignment:{horizontal:'center',vertical:'center'}, border:bdr };
-    }
-  }
-
-  const ws = XLSX.utils.json_to_sheet(mapped);
-  ws['!cols'] = Object.keys(mapped[0]).map(k => ({ wch: Math.max(k.length+2, 12) }));
-  estilizarWs(ws, mapped);
-  XLSX.utils.book_append_sheet(wb, ws, 'CARGAS OTIMIZADAS');
-
-  numerosDocas.forEach(num => {
-    const d = docaMap[num];
-    if (!d || !d.rows.length) return;
-    const dRows = [...d.rows]
-      .sort((a, b) => (parseFloat(a['SEQ.']||0)) - (parseFloat(b['SEQ.']||0)))
-      .map(mapRow);
-    const wsD = XLSX.utils.json_to_sheet(dRows);
-    wsD['!cols'] = Object.keys(dRows[0]).map(k => ({ wch: Math.max(k.length+2, 12) }));
-    estilizarWs(wsD, dRows);
-    XLSX.utils.book_append_sheet(wb, wsD, `DOCA ${num}`);
+    row.height = 16;
   });
 
   const date = new Date().toISOString().split('T')[0];
   const fname = `Cargas_Otimizadas_${date}.xlsx`;
   try {
-    const wbout = XLSX.write(wb, { bookType:'xlsx', type:'array', cellStyles:true });
-    const blob = new Blob([wbout], { type:'application/octet-stream' });
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = fname;
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
-  } catch(e) { XLSX.writeFile(wb, fname); }
+  } catch(e) { toast('❌ Erro ao gerar Excel: '+e.message, 'err'); return null; }
   toast('💾 Excel gerado com sucesso! Ordenado por SEQ. crescente.', 'ok');
   return fname;
 }
@@ -2306,6 +2445,17 @@ let _historicoSelecionado = null;
 // ══════════════════════════════════
 //  HISTÓRICO
 // ══════════════════════════════════
+function formatarDuracao(ms) {
+  if (!ms || ms < 0) return '—';
+  const totalSeg = Math.round(ms / 1000);
+  const h = Math.floor(totalSeg / 3600);
+  const m = Math.floor((totalSeg % 3600) / 60);
+  const s = totalSeg % 60;
+  if (h > 0) return `${h}h ${m}min`;
+  if (m > 0) return `${m}min ${s}s`;
+  return `${s}s`;
+}
+
 function salvarHistorico() {
   if (!optResult) return;
   const { docaMap, numerosDocas } = optResult;
@@ -2314,10 +2464,18 @@ function salvarHistorico() {
   const docasUsadas = numerosDocas.filter(n => docaMap[n]?.rows.length > 0);
   const uniqueMots = [...new Set(allRows.map(r => String(r['MOTORISTA']||'').trim().toUpperCase()).filter(Boolean))];
 
+  const agora = Date.now();
+  const tempoTotalMs = processoIniciadoEm ? (agora - processoIniciadoEm) : null;
+
   const registro = {
-    id: Date.now(),
+    id: agora,
     dataProcessamento: new Date().toISOString(),
     dataFormatada: new Date().toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }),
+    usuarioResponsavel: usuarioResponsavel || '—',
+    ultimaAlteracao: new Date().toISOString(),
+    tempoTotalMs: tempoTotalMs,
+    tempoTotalFormatado: formatarDuracao(tempoTotalMs),
+    finalizado: true,
     totalCargas: allRows.length,
     totalNF: allRows.reduce((a,r)=>a+(parseFloat(r['QTD NF']||0)||0),0),
     totalVolumes: allRows.reduce((a,r)=>a+(parseFloat(r['VOLUMES']||0)||0),0),
@@ -2409,8 +2567,67 @@ function limpiarLocalStorageSeBloqueado() {
   }
 }
 
+const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
 function renderHistorico() {
-  const historico = JSON.parse(localStorage.getItem('logix_historico') || '[]');
+  const todos = JSON.parse(localStorage.getItem('logix_historico') || '[]');
+  const filtrosEl = document.getElementById('historicoFiltros');
+  if (filtrosEl) filtrosEl.style.display = todos.length ? 'block' : 'none';
+  aplicarFiltrosHistorico(todos);
+}
+
+function limparFiltrosHistorico() {
+  ['fhDataIni','fhDataFim','fhDoca','fhResponsavel','fhBusca'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const st = document.getElementById('fhStatus'); if (st) st.value = '';
+  aplicarFiltrosHistorico();
+}
+
+function aplicarFiltrosHistorico(listaBase) {
+  const todos = listaBase || JSON.parse(localStorage.getItem('logix_historico') || '[]');
+
+  const dataIni = document.getElementById('fhDataIni')?.value || '';
+  const dataFim = document.getElementById('fhDataFim')?.value || '';
+  const doca = (document.getElementById('fhDoca')?.value || '').trim().toUpperCase();
+  const responsavel = (document.getElementById('fhResponsavel')?.value || '').trim().toLowerCase();
+  const busca = (document.getElementById('fhBusca')?.value || '').trim().toUpperCase();
+  const status = document.getElementById('fhStatus')?.value || '';
+
+  const filtrado = todos.filter(reg => {
+    const d = new Date(reg.dataProcessamento || reg.id);
+    if (dataIni && d < new Date(dataIni + 'T00:00:00')) return false;
+    if (dataFim && d > new Date(dataFim + 'T23:59:59')) return false;
+    if (doca && !(reg.docasUsadas || []).some(dc => String(dc).toUpperCase().includes(doca))) return false;
+    if (responsavel && !(reg.usuarioResponsavel || '').toLowerCase().includes(responsavel)) return false;
+    if (status === 'finalizado' && !reg.finalizado) return false;
+    if (busca) {
+      const alvo = [
+        (reg.motoristas || []).join(' '),
+        (reg.docasUsadas || []).join(' '),
+        ...(reg.dadosCompletos || []).flatMap(r => [r['LOJA'], r['PLACA'], r['MOTORISTA']]),
+      ].join(' ').toUpperCase();
+      if (!alvo.includes(busca)) return false;
+    }
+    return true;
+  });
+
+  const contEl = document.getElementById('fhContagem');
+  if (contEl) contEl.textContent = `${filtrado.length} de ${todos.length} registro${todos.length===1?'':'s'}`;
+
+  const emptyEl = document.getElementById('historicoEmpty');
+  if (emptyEl) {
+    if (!todos.length) {
+      emptyEl.querySelector('.empty-title').textContent = 'Nenhuma operação registrada';
+      emptyEl.querySelector('.empty-sub').textContent = 'O histórico será salvo automaticamente ao clicar em "Finalizar Processo" no Passo 5';
+    } else {
+      emptyEl.querySelector('.empty-title').textContent = 'Nenhum registro encontrado';
+      emptyEl.querySelector('.empty-sub').textContent = 'Ajuste ou limpe os filtros para ver mais resultados';
+    }
+  }
+
+  renderHistoricoLista(filtrado);
+}
+
+function renderHistoricoLista(historico) {
   const listEl = document.getElementById('historicoList');
   const emptyEl = document.getElementById('historicoEmpty');
   if (!listEl) return;
@@ -2420,7 +2637,21 @@ function renderHistorico() {
     return;
   }
   emptyEl.style.display = 'none';
-  listEl.innerHTML = historico.map(reg => `
+
+  // ── Agrupar por Ano → Mês → Dia (jamais sobrescreve registros; apenas organiza a exibição) ──
+  const arvore = {};
+  historico.forEach(reg => {
+    const d = new Date(reg.dataProcessamento || reg.id);
+    const ano = d.getFullYear();
+    const mes = d.getMonth();
+    const diaKey = String(d.getDate()).padStart(2,'0') + '/' + String(mes+1).padStart(2,'0') + '/' + ano;
+    arvore[ano] = arvore[ano] || {};
+    arvore[ano][mes] = arvore[ano][mes] || {};
+    arvore[ano][mes][diaKey] = arvore[ano][mes][diaKey] || [];
+    arvore[ano][mes][diaKey].push(reg);
+  });
+
+  const cardHtml = reg => `
     <div class="hist-card" style="cursor:default;">
       <div class="hist-head">
         <div>
@@ -2440,8 +2671,66 @@ function renderHistorico() {
         <span class="badge bg-purple">${reg.totalNF} NF</span>
         <span class="badge bg-gray">${reg.totalVolumes} vol</span>
         <span class="badge bg-gold">${reg.cubagem} m³</span>
+        ${reg.usuarioResponsavel ? `<span class="badge bg-gray">👤 ${reg.usuarioResponsavel}</span>` : ''}
+        ${reg.tempoTotalFormatado ? `<span class="badge bg-gray">⏱ ${reg.tempoTotalFormatado}</span>` : ''}
+        ${reg.finalizado ? `<span class="badge bg-green">🔒 Finalizado</span>` : ''}
       </div>
+    </div>`;
+
+  const anos = Object.keys(arvore).sort((a,b) => b - a);
+  listEl.innerHTML = anos.map(ano => {
+    const meses = Object.keys(arvore[ano]).sort((a,b) => b - a);
+    const mesesHtml = meses.map(mes => {
+      const dias = Object.keys(arvore[ano][mes]).sort((a,b) => {
+        // dd/mm/aaaa → comparar por data real
+        const [da,ma,aa] = a.split('/'); const [db,mb,ab] = b.split('/');
+        return new Date(ab,mb-1,db) - new Date(aa,ma-1,da);
+      });
+      const diasHtml = dias.map(dia => {
+        const regsDoDia = arvore[ano][mes][dia];
+        return `
+        <details class="hist-day" open>
+          <summary>📅 ${dia} <span class="badge bg-gray">${regsDoDia.length} registro${regsDoDia.length>1?'s':''}</span></summary>
+          <div style="padding:8px 0 0 18px;">${regsDoDia.map(cardHtml).join('')}</div>
+        </details>`;
+      }).join('');
+      return `
+      <details class="hist-month" open>
+        <summary>🗂️ ${MESES_PT[mes]}</summary>
+        <div style="padding:6px 0 0 14px;">${diasHtml}</div>
+      </details>`;
+    }).join('');
+    return `
+    <details class="hist-year" open>
+      <summary>🗓️ ${ano}</summary>
+      <div style="padding:6px 0 0 10px;">${mesesHtml}</div>
+    </details>`;
+  }).join('');
+}
+
+function agruparPorLoja(dadosCompletos) {
+  const mapa = {};
+  (dadosCompletos || []).forEach(r => {
+    const loja = String(r['LOJA'] || '—').trim() || '—';
+    if (!mapa[loja]) mapa[loja] = { nf: 0, vol: 0, cub: 0 };
+    mapa[loja].nf += parseFloat(r['QTD NF'] || 0) || 0;
+    mapa[loja].vol += parseFloat(r['VOLUMES'] || 0) || 0;
+    mapa[loja].cub += parseFloat(r['CUB'] || 0) || 0;
+  });
+  return mapa;
+}
+
+function barrasHTML(titulo, icone, itens, cor, sufixo) {
+  const max = Math.max(1, ...itens.map(i => i.valor));
+  const linhas = itens.map(i => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="width:76px;font-size:11px;color:var(--text2);text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${i.label}">${i.label}</div>
+      <div style="flex:1;background:var(--surface2);border-radius:5px;overflow:hidden;height:16px;">
+        <div style="width:${(i.valor/max*100).toFixed(1)}%;background:${cor};height:100%;border-radius:5px;"></div>
+      </div>
+      <div style="width:64px;font-size:11px;font-family:var(--mono);color:var(--text);flex-shrink:0;">${sufixo==='m³'?i.valor.toFixed(2):Math.round(i.valor)}${sufixo?' '+sufixo:''}</div>
     </div>`).join('');
+  return `<div class="card-title" style="margin-bottom:10px;">${icone} ${titulo}</div>${linhas || '<div class="help">Sem dados</div>'}`;
 }
 
 function verDetalheHistorico(id) {
@@ -2460,6 +2749,21 @@ function verDetalheHistorico(id) {
   // Mostrar dados completos se disponíveis
   const temDadosCompletos = reg.dadosCompletos && reg.dadosCompletos.length > 0;
 
+  let graficosHtml = '';
+  if (temDadosCompletos) {
+    const porLoja = agruparPorLoja(reg.dadosCompletos);
+    const lojas = Object.keys(porLoja);
+    const nfItens  = lojas.map(l => ({ label:l, valor:porLoja[l].nf  })).sort((a,b)=>b.valor-a.valor).slice(0,15);
+    const volItens = lojas.map(l => ({ label:l, valor:porLoja[l].vol })).sort((a,b)=>b.valor-a.valor).slice(0,15);
+    const cubItens = lojas.map(l => ({ label:l, valor:porLoja[l].cub })).sort((a,b)=>b.valor-a.valor).slice(0,15);
+    graficosHtml = `
+    <div class="frow-3 mt-16">
+      <div class="card">${barrasHTML('NF por Loja', '🧾', nfItens, 'var(--green)')}</div>
+      <div class="card">${barrasHTML('Volumes por Loja', '📦', volItens, 'var(--purple)')}</div>
+      <div class="card">${barrasHTML('Cubagem por Loja', '📐', cubItens, 'var(--gold)', 'm³')}</div>
+    </div>`;
+  }
+
   contEl.innerHTML = `
     <div class="stats-grid" style="margin-bottom:16px;">
       <div class="stat-card"><div class="stat-lbl">Data</div><div style="font-size:12px;font-weight:700;margin-top:4px">${reg.dataFormatada}</div></div>
@@ -2468,6 +2772,8 @@ function verDetalheHistorico(id) {
       <div class="stat-card"><div class="stat-lbl">Volumes</div><div class="stat-val" style="color:var(--purple)">${reg.totalVolumes}</div></div>
       <div class="stat-card"><div class="stat-lbl">Lacres LV</div><div class="stat-val" style="color:var(--accent)">${reg.totalLacresLV}</div></div>
       <div class="stat-card"><div class="stat-lbl">Lacres BAÚ</div><div class="stat-val" style="color:var(--gold)">${reg.totalLacresBAU}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Responsável</div><div style="font-size:12px;font-weight:700;margin-top:4px">👤 ${reg.usuarioResponsavel || '—'}</div></div>
+      <div class="stat-card"><div class="stat-lbl">Tempo total</div><div style="font-size:12px;font-weight:700;margin-top:4px">⏱ ${reg.tempoTotalFormatado || '—'}</div></div>
     </div>
     <div class="frow">
       <div>
@@ -2479,6 +2785,7 @@ function verDetalheHistorico(id) {
         <div class="tw"><table><thead><tr><th>Motorista</th><th>Lacre BAÚ</th></tr></thead><tbody>${motRows}</tbody></table></div>
       </div>
     </div>
+    ${graficosHtml}
     ${!temDadosCompletos ? '<div class="alert alert-warn" style="margin-top:12px;"><span>⚠️</span><span>Este registro foi salvo em versão anterior sem dados completos. Reprocessar não disponível.</span></div>' : ''}`;
   detEl.style.display = 'block';
   detEl.scrollIntoView({ behavior: 'smooth' });
@@ -2588,6 +2895,15 @@ function getDicaSenha() {
   return localStorage.getItem('logix_senha_dica') || '';
 }
 
+function atualizarStatusSenha() {
+  const el = document.getElementById('cfgSenhaStatus');
+  if (!el) return;
+  const personalizada = !!localStorage.getItem('logix_senha');
+  el.innerHTML = personalizada
+    ? '<span style="color:var(--green);">🟢 Senha personalizada cadastrada</span>'
+    : '<span style="color:var(--gold);">🟡 Nenhuma senha cadastrada ainda — usando a senha padrão de fábrica</span>';
+}
+
 function pedirSenha(callback) {
   const modal = document.getElementById('senhaModal');
   document.getElementById('senhaInput').value = '';
@@ -2668,6 +2984,7 @@ function salvarNovaSenha() {
   if (dica) localStorage.setItem('logix_senha_dica', dica);
   fecharGerenciarSenha();
   toast('🔐 Senha alterada com sucesso!', 'ok');
+  atualizarStatusSenha();
 }
 
 function redefinirSenhaComDica() {
@@ -2682,6 +2999,7 @@ function redefinirSenhaComDica() {
   localStorage.setItem('logix_senha', nova1);
   fecharGerenciarSenha();
   toast('🔐 Senha redefinida com sucesso!', 'ok');
+  atualizarStatusSenha();
 }
 
 function excluirHistorico(id) {
@@ -2751,6 +3069,13 @@ function finalizarProcesso() {
     btn.style.border = '1px solid rgba(0,230,118,.3)';
   }
   toast('✅ Processo finalizado e salvo no histórico!', 'ok');
+
+  // Operação encerrada — limpar tudo e voltar ao início para uma nova operação de TS
+  setTimeout(() => {
+    limparTodosDados();
+    wizNav(1);
+    toast('🆕 Pronto para uma nova operação', 'ok');
+  }, 1500);
 }
 
 // ══════════════════════════════════
