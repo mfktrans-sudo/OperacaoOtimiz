@@ -197,6 +197,8 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 .lacre-input.filled-bau { border-color: rgba(255,184,0,.4) !important; background: rgba(255,184,0,.06) !important; }
 .lacre-input.filled-lv  { border-color: rgba(99,102,241,.4) !important; background: rgba(99,102,241,.06) !important; }
 .lacre-input.missing    { border-color: rgba(255,61,90,.6) !important; background: rgba(255,61,90,.08) !important; }
+.lacre-input:disabled   { opacity: .35; cursor: not-allowed; }
+#phaseIndicatorLV:hover, #phaseIndicatorBAU:hover { filter: brightness(1.15); }
 
 /* ─── BAU PANEL ─── */
 .bau-panel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
@@ -540,19 +542,19 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
   <!-- FASE INDICATOR -->
   <div class="card" id="lacrePhaseCard" style="background:rgba(99,102,241,.04);border-color:rgba(99,102,241,.2);margin-bottom:16px;">
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-      <div id="phaseIndicatorLV" style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:9px;border:1.5px solid rgba(99,102,241,.5);background:var(--accent-glow);">
+      <div id="phaseIndicatorLV" onclick="setSetorAtivo('LV')" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:9px;border:1.5px solid rgba(99,102,241,.5);background:var(--accent-glow);">
         <span style="font-size:18px;">🔵</span>
         <div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;">FASE 1</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;">SETOR LV</div>
           <div style="font-weight:700;font-size:13px;color:var(--accent)">LACRE LV</div>
           <div style="font-size:11px;color:var(--text2)">Por loja / por linha</div>
         </div>
       </div>
-      <div style="color:var(--text3);font-size:20px;">→</div>
-      <div id="phaseIndicatorBAU" style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:9px;border:1.5px solid var(--border);opacity:0.5;">
+      <div style="color:var(--text3);font-size:20px;">⇄</div>
+      <div id="phaseIndicatorBAU" onclick="setSetorAtivo('BAU')" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:9px;border:1.5px solid var(--border);opacity:0.5;">
         <span style="font-size:18px;">🟡</span>
         <div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;">FASE 2</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;">SETOR BAÚ</div>
           <div style="font-weight:700;font-size:13px;color:var(--gold)">LACRE BAÚ</div>
           <div style="font-size:11px;color:var(--text2)">Por motorista — auto-replicado</div>
         </div>
@@ -944,13 +946,13 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 // ⚠️ SUBSTITUA pelos dados do SEU projeto Firebase
 // (Console Firebase → ⚙️ Configurações do projeto → Geral → "Seus apps" → SDK setup and configuration)
 const firebaseConfig = {
-  apiKey: "AIzaSyAuh-VSXiTmMYcrQhOAbqXax1NNG8G-sUA",
-  authDomain: "otimizacao-ts-sp.firebaseapp.com",
-  projectId: "otimizacao-ts-sp",
-  storageBucket: "otimizacao-ts-sp.firebasestorage.app",
-  messagingSenderId: "471831839898",
-  appId: "1:471831839898:web:92dd26d3656ef68e73cb23",
-  measurementId: "G-00Z1C7CS8P"
+  apiKey: "AIzaSyDtVJQ-2rfd44EdtWII_9a07uNbKElqeVM",
+  authDomain: "otimizacao-ts---equipe-elite.firebaseapp.com",
+  projectId: "otimizacao-ts---equipe-elite",
+  storageBucket: "otimizacao-ts---equipe-elite.firebasestorage.app",
+  messagingSenderId: "338254662762",
+  appId: "1:338254662762:web:aa2adeef1bbd86d3a74e13",
+  measurementId: "G-9Y11RW8MFL"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -1016,6 +1018,7 @@ firebase.auth().onAuthStateChanged(user => {
 let rawData = [];
 let lacresLV = {};
 let lacresBau = {};
+let setorAtivo = localStorage.getItem('logix_setorAtivo') || 'LV'; // 'LV' ou 'BAU' — controla qual setor está liberado para preencher
 let motoristas = [];
 let optResult = null;
 let colsDetected = [];
@@ -1628,6 +1631,29 @@ function voltarOtimizacao() { optResult = null; updateBadges(); wizardMaxUnlocke
 // ══════════════════════════════════
 //  LACRES
 // ══════════════════════════════════
+function setSetorAtivo(setor) {
+  setorAtivo = setor;
+  localStorage.setItem('logix_setorAtivo', setor);
+  atualizarIndicadorSetor();
+  renderLacreTable();
+  toast(setor === 'LV' ? '🔵 Setor LV liberado para preenchimento' : '🟡 Setor BAÚ liberado para preenchimento', 'ok');
+}
+
+function atualizarIndicadorSetor() {
+  const indLV = document.getElementById('phaseIndicatorLV');
+  const indBAU = document.getElementById('phaseIndicatorBAU');
+  if (indLV) {
+    indLV.style.opacity = setorAtivo === 'LV' ? '1' : '0.5';
+    indLV.style.borderColor = setorAtivo === 'LV' ? 'rgba(99,102,241,.5)' : 'var(--border)';
+    indLV.style.background = setorAtivo === 'LV' ? 'var(--accent-glow)' : '';
+  }
+  if (indBAU) {
+    indBAU.style.opacity = setorAtivo === 'BAU' ? '1' : '0.5';
+    indBAU.style.borderColor = setorAtivo === 'BAU' ? 'rgba(255,184,0,.5)' : 'var(--border)';
+    indBAU.style.background = setorAtivo === 'BAU' ? 'rgba(255,184,0,.08)' : '';
+  }
+}
+
 function renderLacreTable() {
   if (!optResult || !rawData.length) {
     document.getElementById('lacreEmpty').style.display = 'block';
@@ -1636,6 +1662,7 @@ function renderLacreTable() {
   }
   document.getElementById('lacreEmpty').style.display = 'none';
   document.getElementById('lacreTableSec').style.display = 'block';
+  atualizarIndicadorSetor();
 
   // BAU panel
   const uniqueMotoristas = [...new Set(rawData.map(r => String(r['MOTORISTA']||'').trim().toUpperCase()).filter(Boolean))];
@@ -1649,7 +1676,7 @@ function renderLacreTable() {
       bauHtml += `<div class="bau-row" style="${hasVal?'border-color:rgba(255,184,0,.35);background:rgba(255,184,0,.05);':''}">
         <div class="bau-label" title="${nome}">${isFixo?'⭐ ':''}${nome.split(' ').slice(0,2).join(' ')}</div>
         <input class="lacre-input${hasVal?' filled-bau':''}" type="text" placeholder="BAÚ-XXXXX" value="${val}"
-          style="width:130px" onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" data-bau="${nome.replace(/"/g,'&quot;')}">
+          style="width:130px" onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" data-bau="${nome.replace(/"/g,'&quot;')}" ${setorAtivo!=='BAU'?'disabled':''}>
       </div>`;
     });
     document.getElementById('bauPanelGrid').innerHTML = bauHtml;
@@ -1673,9 +1700,9 @@ function renderLacreTable() {
       <td><b>${row['LOJA']||''}</b></td>
       <td>${isFixo?'⭐ ':''}${row['MOTORISTA']||''}</td>
       <td><input class="lacre-input${lvVal?' filled-lv':''}${lvMissing?' missing':''}" type="text" placeholder="LV-XXXXX" value="${lvVal}"
-        onchange="setLacreLV(${i}, this.value)" data-lv="${i}"></td>
+        onchange="setLacreLV(${i}, this.value)" data-lv="${i}" ${setorAtivo!=='LV'?'disabled':''}></td>
       <td><input class="lacre-input${bauVal?' filled-bau':''}${bauMissing?' missing':''}" type="text" placeholder="BAÚ-XXXXX" value="${bauVal}"
-        onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" data-bau="${nome.replace(/"/g,'&quot;')}"></td>
+        onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" data-bau="${nome.replace(/"/g,'&quot;')}" ${setorAtivo!=='BAU'?'disabled':''}></td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -3075,6 +3102,15 @@ function finalizarProcesso() {
   setTimeout(() => {
     limparTodosDados();
     wizNav(1);
+    // ⚠️ correção: o botão ficava travado em "Processo Finalizado!" (disabled)
+    // e não voltava ao estado normal, impedindo iniciar um novo processo
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>🏁</span><span>Finalizar Processo</span>';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.border = '';
+    }
     toast('🆕 Pronto para uma nova operação', 'ok');
   }, 1500);
 }
