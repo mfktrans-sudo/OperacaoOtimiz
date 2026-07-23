@@ -1030,6 +1030,7 @@ let aplicandoRemoto = false; // true enquanto aplicamos uma atualização vinda 
 let unsubEstado = null, unsubConfig = null, unsubHistorico = null; // handles dos listeners do Firestore
 let historicoCache = []; // espelho local do histórico sincronizado via Firestore
 let _senhaCache = null, _senhaDicaCache = '';
+let _erroSincronizacaoConfig = null; // guarda a última falha de sincronização de config/senha, para exibir na tela
 
 const DOCAS_PRESET = ['156','157','158','159','160','161','162','163','164','165','166','167','168','169','170','171','172','173','174','175'];
 const DEFAULT_FIXOS = [
@@ -1083,15 +1084,20 @@ function iniciarSincronizacaoFirestore() {
 
   // 2) Configurações compartilhadas: docas, motoristas fixos, senha de administrador
   unsubConfig = db.collection('logix').doc('config').onSnapshot(snap => {
+    _erroSincronizacaoConfig = null;
     const cfg = snap.data();
-    if (!cfg) return;
+    if (!cfg) { atualizarStatusSenha(); return; }
     if (Array.isArray(cfg.motoristas)) { motoristas = cfg.motoristas; renderMotoristas(); }
     if (Array.isArray(cfg.docasDisponiveis) && cfg.docasDisponiveis.length) { docasDisponiveis = cfg.docasDisponiveis; renderDocasDisp(); }
     _senhaCache = cfg.senha || null;
     _senhaDicaCache = cfg.senhaDica || '';
     atualizarStatusSenha();
     updateBadges();
-  }, err => console.error('Erro na sincronização de configurações:', err));
+  }, err => {
+    console.error('Erro na sincronização de configurações:', err);
+    _erroSincronizacaoConfig = err.code || 'erro-desconhecido';
+    atualizarStatusSenha();
+  });
 
   // 3) Histórico de operações finalizadas
   unsubHistorico = db.collection('logix_historico').orderBy('dataProcessamento', 'desc').onSnapshot(snap => {
@@ -2887,6 +2893,10 @@ function getDicaSenha() {
 function atualizarStatusSenha() {
   const el = document.getElementById('cfgSenhaStatus');
   if (!el) return;
+  if (_erroSincronizacaoConfig) {
+    el.innerHTML = `<span style="color:var(--red);">🔴 Não foi possível conectar ao Firestore (${_erroSincronizacaoConfig}) — a senha padrão "logix2026" segue funcionando, mas nenhuma senha personalizada será reconhecida até a conexão ser restabelecida. Verifique se o Firestore Database foi criado e as regras publicadas no Console do Firebase.</span>`;
+    return;
+  }
   const personalizada = !!_senhaCache;
   el.innerHTML = personalizada
     ? '<span style="color:var(--green);">🟢 Senha personalizada cadastrada (compartilhada com toda a equipe)</span>'
