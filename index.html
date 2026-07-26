@@ -1711,7 +1711,7 @@ function renderLacreTable() {
       bauHtml += `<div class="bau-row" style="${hasVal?'border-color:rgba(255,184,0,.35);background:rgba(255,184,0,.05);':''}">
         <div class="bau-label" title="${nome}">${isFixo?'⭐ ':''}${nome.split(' ').slice(0,2).join(' ')}</div>
         <input class="lacre-input${hasVal?' filled-bau':''}" type="text" placeholder="BAÚ-XXXXX" value="${val}"
-          style="width:130px" onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" data-bau="${nome.replace(/"/g,'&quot;')}" ${setorAtivo!=='BAU'?'disabled':''}>
+          style="width:130px" onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" onpaste="colarLacreSequencial(event, this)" data-bau="${nome.replace(/"/g,'&quot;')}" ${setorAtivo!=='BAU'?'disabled':''}>
       </div>`;
     });
     document.getElementById('bauPanelGrid').innerHTML = bauHtml;
@@ -1735,9 +1735,9 @@ function renderLacreTable() {
       <td><b>${row['LOJA']||''}</b></td>
       <td>${isFixo?'⭐ ':''}${row['MOTORISTA']||''}</td>
       <td><input class="lacre-input${lvVal?' filled-lv':''}${lvMissing?' missing':''}" type="text" placeholder="LV-XXXXX" value="${lvVal}"
-        onchange="setLacreLV(${i}, this.value)" data-lv="${i}" ${setorAtivo!=='LV'?'disabled':''}></td>
+        onchange="setLacreLV(${i}, this.value)" onpaste="colarLacreSequencial(event, this)" data-lv="${i}" ${setorAtivo!=='LV'?'disabled':''}></td>
       <td><input class="lacre-input${bauVal?' filled-bau':''}${bauMissing?' missing':''}" type="text" placeholder="BAÚ-XXXXX" value="${bauVal}"
-        onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" data-bau="${nome.replace(/"/g,'&quot;')}" ${setorAtivo!=='BAU'?'disabled':''}></td>
+        onchange="setLacreBau('${nome.replace(/'/g,"\\'")}', this.value)" onpaste="colarLacreSequencial(event, this)" data-bau="${nome.replace(/"/g,'&quot;')}" ${setorAtivo!=='BAU'?'disabled':''}></td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -1768,6 +1768,51 @@ function setLacreBau(nome, val) {
   if (val) toast(`🔄 Lacre BAÚ replicado → ${nome.split(' ')[0]}`, 'ok');
   updateLacreProgress();
   agendarAutoSave();
+}
+
+// ── Colar uma relação de lacres de uma só vez (Ctrl+V), preenchendo em sequência
+// a partir da linha/campo clicado, respeitando a ordem já existente na tela ──
+function colarLacreSequencial(event, inputEl) {
+  const clipboard = event.clipboardData || window.clipboardData;
+  if (!clipboard) return; // sem acesso à área de transferência: mantém o comportamento padrão do navegador
+  const texto = clipboard.getData('text');
+  if (texto === undefined || texto === null) return;
+  event.preventDefault();
+
+  let linhas = texto.split(/\r\n|\r|\n/);
+  while (linhas.length && linhas[linhas.length-1].trim() === '') linhas.pop();
+  if (!linhas.length) return;
+  // Se a linha colada vier com tabulação (ex: colado direto de uma planilha com várias colunas),
+  // usa apenas o último valor da linha — que é onde normalmente fica o lacre.
+  const valores = linhas.map(l => { const partes = l.split('\t'); return partes[partes.length-1].trim().toUpperCase(); });
+
+  if (inputEl.dataset.lv !== undefined) {
+    const todasLinhas = Array.from(document.querySelectorAll('#lacreTableInner tbody tr'));
+    const start = todasLinhas.indexOf(inputEl.closest('tr'));
+    if (start === -1) return;
+    let vi = 0;
+    for (let li = start; li < todasLinhas.length && vi < valores.length; li++) {
+      const tr = todasLinhas[li];
+      if (tr.style.display === 'none') continue; // pula linhas ocultas pelo filtro de busca
+      const inp = tr.querySelector('input[data-lv]');
+      if (!inp || inp.disabled) continue;
+      setLacreLV(parseInt(inp.dataset.lv, 10), valores[vi]);
+      vi++;
+    }
+    if (vi > 0) toast(`📋 ${vi} lacre(s) LV colado(s) em sequência`, 'ok');
+  } else if (inputEl.dataset.bau !== undefined) {
+    const todosBau = Array.from(document.querySelectorAll('#bauPanelGrid input[data-bau]'));
+    let start = todosBau.findIndex(el => el === inputEl || el.dataset.bau === inputEl.dataset.bau);
+    if (start === -1) start = 0;
+    let vi = 0;
+    for (let li = start; li < todosBau.length && vi < valores.length; li++) {
+      const inp = todosBau[li];
+      if (inp.disabled) continue;
+      setLacreBau(inp.dataset.bau, valores[vi]);
+      vi++;
+    }
+    if (vi > 0) toast(`📋 ${vi} lacre(s) BAÚ colado(s) em sequência`, 'ok');
+  }
 }
 
 function updateLacreProgress() {
@@ -2455,7 +2500,7 @@ async function downloadExcel() {
 
   function mapRow(r) {
     const nome = String(r['MOTORISTA']||'').trim().toUpperCase();
-    const doca05 = r._onda===1 ? '163 (1°onda)' : (r['DOCA-05']||r['DOCA05']||'');
+    const doca05 = fmtDocaOnda('163', 1);
     const docaFmt = fmtDocaOnda(r._doca, r._onda);
     return {
       'DATA': r['DATA']||'', 'SEQ.': r['SEQ.']||'', 'LOJA': r['LOJA']||'',
@@ -3495,7 +3540,8 @@ async function gerarExcelConferentes() {
       c12.value = l2; c12.font = {bold:true,name:'Arial',size:10};
       c12.fill = fill; c12.alignment = {horizontal:'left',vertical:'middle'}; c12.border = bdrB;
     } else {
-      for (let ci=8; ci<12; ci++) { const c=row.getCell(ci+1); c.fill=fill; c.border = ci<10?bdrG:bdrB; }
+      // Sem grupo nesta linha — não desenha bordas nem preenche o quadro menor além do último registro
+      for (let ci=8; ci<12; ci++) { row.getCell(ci+1).fill = whiteFill; }
     }
   }
 
