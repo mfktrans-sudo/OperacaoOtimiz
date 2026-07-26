@@ -198,6 +198,9 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 .lacre-input.filled-lv  { border-color: rgba(99,102,241,.4) !important; background: rgba(99,102,241,.06) !important; }
 .lacre-input.missing    { border-color: rgba(255,61,90,.6) !important; background: rgba(255,61,90,.08) !important; }
 .lacre-input:disabled   { opacity: .35; cursor: not-allowed; }
+.edhist-input { width: 100%; min-width: 78px; background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; padding: 5px 7px; font-size: 11px; font-family: var(--sans); color: var(--text); outline: none; transition: border-color .15s; }
+.edhist-input:focus { border-color: var(--accent); }
+#edHistTabelaWrap table th, #edHistTabelaWrap table td { white-space: nowrap; }
 #phaseIndicatorLV:hover, #phaseIndicatorBAU:hover { filter: brightness(1.15); }
 
 /* ─── BAU PANEL ─── */
@@ -860,7 +863,7 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 <div class="modal-overlay" id="senhaModal">
   <div class="modal-box" style="max-width:380px;width:100%;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-      <div class="modal-title" style="font-size:18px;">🔒 Confirmar Exclusão</div>
+      <div class="modal-title" style="font-size:18px;" id="senhaModalTitulo">🔒 Confirmar Exclusão</div>
       <button class="btn btn-ghost btn-sm" onclick="cancelarSenha()">✕</button>
     </div>
     <div style="font-size:13px;color:var(--text2);margin-bottom:16px;">Digite a senha para autorizar esta ação:</div>
@@ -870,7 +873,7 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
       <button class="btn btn-ghost btn-sm" onclick="cancelarSenha();abrirRecuperarSenha()" style="font-size:11px;color:var(--text3);">🔑 Esqueci a senha</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-ghost" onclick="cancelarSenha()">Cancelar</button>
-        <button class="btn btn-danger" onclick="confirmarSenha()">🔒 Confirmar</button>
+        <button class="btn btn-danger" onclick="confirmarSenha()" id="senhaModalBtnConfirmar">🔒 Confirmar</button>
       </div>
     </div>
   </div>
@@ -930,6 +933,38 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
         <button class="btn btn-ghost" onclick="fecharGerenciarSenha()">Cancelar</button>
         <button class="btn btn-accent" onclick="redefinirSenhaComDica()">🔑 Redefinir Senha</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MODAL: EDITAR OPERAÇÃO DO HISTÓRICO (COMPLETO) ══════ -->
+<div class="modal-overlay" id="editarHistoricoModal">
+  <div class="modal-box" style="max-width:1240px;width:100%;max-height:88vh;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div class="modal-title" style="font-size:18px;">✏️ Editar Operação Finalizada</div>
+      <button class="btn btn-ghost btn-sm" onclick="fecharEdicaoHistorico()">✕</button>
+    </div>
+    <div id="edHistSubtitulo" style="font-size:12px;color:var(--text2);margin-bottom:14px;"></div>
+
+    <div class="fg" style="max-width:420px;">
+      <label class="flabel">Descrição personalizada (opcional)</label>
+      <input class="finput" id="edHistNome" placeholder="ex: Reforço de última hora - Loja 042">
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px;flex-wrap:wrap;gap:8px;">
+      <div class="card-title" style="margin:0;">📦 Cargas / Lojas desta operação</div>
+      <button class="btn btn-accent btn-sm" onclick="adicionarLinhaEdicaoHistorico()">➕ Adicionar Loja/Carga</button>
+    </div>
+
+    <div class="tw" id="edHistTabelaWrap" style="max-height:42vh;overflow-y:auto;"></div>
+
+    <div class="help" style="margin-top:8px;">💡 Edite qualquer campo diretamente na tabela acima — loja, motorista, placa, doca, NF, volumes, cubagem, lacres etc. Use "➕ Adicionar Loja/Carga" para incluir uma nova loja nesta operação, ou 🗑 na linha para remover uma existente.</div>
+
+    <div id="edHistErro" style="display:none;padding:10px 14px;background:rgba(255,61,90,.1);border:1px solid rgba(255,61,90,.25);border-radius:8px;color:var(--red);font-size:12px;margin-top:12px;"></div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-ghost" onclick="fecharEdicaoHistorico()">Cancelar</button>
+      <button class="btn btn-accent" onclick="salvarEdicaoHistoricoCompleta()">💾 Salvar Alterações</button>
     </div>
   </div>
 </div>
@@ -2930,8 +2965,13 @@ function atualizarStatusSenha() {
     : '<span style="color:var(--gold);">🟡 Nenhuma senha cadastrada ainda — usando a senha padrão de fábrica</span>';
 }
 
-function pedirSenha(callback) {
+function pedirSenha(callback, opcoes) {
   const modal = document.getElementById('senhaModal');
+  const tituloEl = document.getElementById('senhaModalTitulo');
+  const btnEl = document.getElementById('senhaModalBtnConfirmar');
+  const cfg = Object.assign({ titulo: '🔒 Confirmar Exclusão', textoBtn: '🔒 Confirmar', classeBtn: 'btn-danger' }, opcoes || {});
+  if (tituloEl) tituloEl.textContent = cfg.titulo;
+  if (btnEl) { btnEl.textContent = cfg.textoBtn; btnEl.className = 'btn ' + cfg.classeBtn; }
   document.getElementById('senhaInput').value = '';
   document.getElementById('senhaErro').style.display = 'none';
   modal.classList.add('show');
@@ -3041,14 +3081,184 @@ function excluirHistorico(id) {
   });
 }
 
+// ── Colunas editáveis no formulário completo de edição do histórico ──
+const ED_HIST_CAMPOS = [
+  { key:'DATA', label:'Data' },
+  { key:'SEQ.', label:'Seq.' },
+  { key:'LOJA', label:'Loja' },
+  { key:'PRÉ-05', label:'Pré-05' },
+  { key:'PRÉ-ROMANEIO', label:'Pré-Romaneio' },
+  { key:'QTD NF', label:'Qtd NF' },
+  { key:'VOLUMES', label:'Volumes' },
+  { key:'CUB', label:'Cub (m³)' },
+  { key:'TIPO', label:'Tipo' },
+  { key:'MOTORISTA', label:'Motorista' },
+  { key:'RG', label:'RG' },
+  { key:'CPF', label:'CPF' },
+  { key:'PLACA', label:'Placa' },
+  { key:'TELEFONE', label:'Telefone' },
+  { key:'DOCA-05', label:'Doca-05' },
+  { key:'DOCA', label:'Doca' },
+  { key:'LACRE-LV', label:'Lacre LV' },
+  { key:'LACRE-BAU', label:'Lacre BAÚ' },
+];
+const ED_HIST_CAMPOS_NUM = ['QTD NF','VOLUMES','CUB','SEQ.'];
+
+let _edHistId = null;
+let _edHistLinhas = [];
+let _edHistProxIdx = 0;
+
 function editarHistorico(id) {
   const reg = historicoCache.find(r => r.id === id);
   if (!reg) return;
-  const novoNome = prompt('Editar descrição do registro (deixe vazio para manter):', reg.nomePersonalizado || '');
-  if (novoNome === null) return; // cancelou
-  db.collection('logix_historico').doc(String(id)).set({ nomePersonalizado: novoNome.trim() }, { merge: true })
-    .then(() => toast('✅ Registro atualizado para toda a equipe', 'ok'))
-    .catch(err => { console.error(err); toast('⚠️ Falha ao atualizar — verifique sua conexão', 'err'); });
+  // Mesma proteção por senha já usada para excluir registros do histórico
+  pedirSenha(() => abrirEdicaoHistoricoCompleta(id), { titulo: '🔓 Confirmar Edição', textoBtn: '✏️ Continuar', classeBtn: 'btn-accent' });
+}
+
+function abrirEdicaoHistoricoCompleta(id) {
+  const reg = historicoCache.find(r => r.id === id);
+  if (!reg) return;
+  if (!reg.dadosCompletos || !reg.dadosCompletos.length) {
+    toast('⚠️ Este registro foi salvo em versão anterior sem dados completos — a edição de cargas/lojas não está disponível para ele.', 'err');
+    return;
+  }
+  _edHistId = id;
+  const lv = reg.lacresLV || {};
+  const bau = reg.lacresBau || {};
+  _edHistLinhas = reg.dadosCompletos.map(r => ({
+    _idx: r._idx, _onda: r._onda || 1, _fixo: r._fixo || false,
+    'DATA': r['DATA']||'', 'SEQ.': r['SEQ.']||'', 'LOJA': r['LOJA']||'',
+    'PRÉ-05': r['PRÉ-05']||'', 'PRÉ-ROMANEIO': r['PRÉ-ROMANEIO']||'',
+    'QTD NF': r['QTD NF']||0, 'VOLUMES': r['VOLUMES']||0, 'CUB': r['CUB']||0,
+    'TIPO': r['TIPO']||'', 'MOTORISTA': r['MOTORISTA']||'',
+    'RG': r['RG']||'', 'CPF': r['CPF']||'', 'PLACA': r['PLACA']||'', 'TELEFONE': r['TELEFONE']||'',
+    'DOCA-05': r['DOCA-05']||'', 'DOCA': r['DOCA']||'',
+    'LACRE-LV': lv[r._idx] || '',
+    'LACRE-BAU': bau[String(r['MOTORISTA']||'').trim().toUpperCase()] || '',
+  }));
+  const idxExistentes = reg.dadosCompletos.map(r => (typeof r._idx === 'number' ? r._idx : -1));
+  _edHistProxIdx = (idxExistentes.length ? Math.max(...idxExistentes) : -1) + 1;
+
+  document.getElementById('edHistNome').value = reg.nomePersonalizado || '';
+  document.getElementById('edHistSubtitulo').textContent = `Operação de ${reg.dataFormatada} — as alterações são sincronizadas para toda a equipe.`;
+  document.getElementById('edHistErro').style.display = 'none';
+  renderEdicaoHistoricoTabela();
+  document.getElementById('editarHistoricoModal').classList.add('show');
+}
+
+function fecharEdicaoHistorico() {
+  document.getElementById('editarHistoricoModal').classList.remove('show');
+  _edHistId = null;
+  _edHistLinhas = [];
+}
+
+function renderEdicaoHistoricoTabela() {
+  const wrap = document.getElementById('edHistTabelaWrap');
+  if (!wrap) return;
+  const thead = `<thead><tr>${ED_HIST_CAMPOS.map(c=>`<th>${c.label}</th>`).join('')}<th></th></tr></thead>`;
+  const rows = _edHistLinhas.map((linha, i) => {
+    const cells = ED_HIST_CAMPOS.map(c => {
+      const isNum = ED_HIST_CAMPOS_NUM.includes(c.key);
+      const val = linha[c.key] !== undefined ? linha[c.key] : '';
+      return `<td><input class="edhist-input" type="${isNum?'number':'text'}" ${c.key==='CUB'?'step="0.01"':''} value="${String(val).replace(/"/g,'&quot;')}"
+        onchange="atualizarCampoEdicaoHistorico(${i}, '${c.key.replace(/'/g,"\\'")}', this.value)"></td>`;
+    }).join('');
+    return `<tr>${cells}<td><button class="btn btn-danger btn-sm" style="font-size:10px;padding:3px 8px;white-space:nowrap;" onclick="removerLinhaEdicaoHistorico(${i})" title="Remover esta linha">🗑</button></td></tr>`;
+  }).join('');
+  wrap.innerHTML = `<table><tbody></tbody></table>`; // reset seguro antes de montar
+  wrap.innerHTML = `<table>${thead}<tbody>${rows || `<tr><td colspan="${ED_HIST_CAMPOS.length+1}" style="text-align:center;padding:16px;color:var(--text3);">Nenhuma carga nesta operação — use "➕ Adicionar Loja/Carga" acima.</td></tr>`}</tbody></table>`;
+}
+
+function atualizarCampoEdicaoHistorico(idx, campo, valor) {
+  if (!_edHistLinhas[idx]) return;
+  _edHistLinhas[idx][campo] = ED_HIST_CAMPOS_NUM.includes(campo) ? (parseFloat(valor)||0) : valor;
+}
+
+function adicionarLinhaEdicaoHistorico() {
+  const nova = { _idx: _edHistProxIdx++, _onda: 1, _fixo: false };
+  ED_HIST_CAMPOS.forEach(c => { nova[c.key] = ED_HIST_CAMPOS_NUM.includes(c.key) ? 0 : ''; });
+  _edHistLinhas.push(nova);
+  renderEdicaoHistoricoTabela();
+  const wrap = document.getElementById('edHistTabelaWrap');
+  if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+function removerLinhaEdicaoHistorico(idx) {
+  if (!confirm('Remover esta linha (loja/carga) da operação?')) return;
+  _edHistLinhas.splice(idx, 1);
+  renderEdicaoHistoricoTabela();
+}
+
+function salvarEdicaoHistoricoCompleta() {
+  const errEl = document.getElementById('edHistErro');
+  errEl.style.display = 'none';
+  const reg = historicoCache.find(r => r.id === _edHistId);
+  if (!reg) { fecharEdicaoHistorico(); return; }
+
+  const linhas = _edHistLinhas;
+  const nomePersonalizado = document.getElementById('edHistNome').value.trim();
+
+  // Recalcula todos os agregados a partir das linhas editadas — mesma lógica usada em salvarHistorico()
+  const lacresLVNovo = {};
+  const lacresBauNovo = {};
+  const dadosCompletosNovo = linhas.map(l => {
+    const nome = String(l['MOTORISTA']||'').trim().toUpperCase();
+    if (String(l['LACRE-LV']||'').trim()) lacresLVNovo[l._idx] = String(l['LACRE-LV']).trim().toUpperCase();
+    if (nome && String(l['LACRE-BAU']||'').trim()) lacresBauNovo[nome] = String(l['LACRE-BAU']).trim().toUpperCase();
+    return {
+      'DATA': l['DATA']||'', 'SEQ.': l['SEQ.']||'', 'LOJA': l['LOJA']||'',
+      'PRÉ-05': l['PRÉ-05']||'', 'PRÉ-ROMANEIO': l['PRÉ-ROMANEIO']||'',
+      'QTD NF': l['QTD NF']||0, 'VOLUMES': l['VOLUMES']||0, 'CUB': l['CUB']||0,
+      'TIPO': l['TIPO']||'', 'MOTORISTA': l['MOTORISTA']||'',
+      'RG': l['RG']||'', 'CPF': l['CPF']||'', 'PLACA': l['PLACA']||'', 'TELEFONE': l['TELEFONE']||'',
+      'DOCA-05': l['DOCA-05']||'', 'DOCA': l['DOCA']||'',
+      _idx: l._idx, _doca: String(l['DOCA']||'').trim(), _onda: l._onda||1, _fixo: l._fixo||false,
+    };
+  });
+
+  const uniqueMots = [...new Set(dadosCompletosNovo.map(r => String(r['MOTORISTA']||'').trim().toUpperCase()).filter(Boolean))];
+  const docasUsadas = [...new Set(dadosCompletosNovo.map(r => String(r['DOCA']||'').trim()).filter(Boolean))]
+    .sort((a,b) => ((parseFloat(a)||0) - (parseFloat(b)||0)) || a.localeCompare(b));
+
+  const docaDetalhe = docasUsadas.map(doca => {
+    const dRows = dadosCompletosNovo.filter(r => String(r['DOCA']||'').trim() === doca);
+    return {
+      doca: doca,
+      cargas: dRows.length,
+      nf: dRows.reduce((a,r)=>a+(parseFloat(r['QTD NF']||0)||0),0),
+      vol: dRows.reduce((a,r)=>a+(parseFloat(r['VOLUMES']||0)||0),0),
+    };
+  });
+
+  const registroAtualizado = Object.assign({}, reg, {
+    nomePersonalizado: nomePersonalizado,
+    ultimaAlteracao: new Date().toISOString(),
+    totalCargas: dadosCompletosNovo.length,
+    totalNF: dadosCompletosNovo.reduce((a,r)=>a+(parseFloat(r['QTD NF']||0)||0),0),
+    totalVolumes: dadosCompletosNovo.reduce((a,r)=>a+(parseFloat(r['VOLUMES']||0)||0),0),
+    cubagem: dadosCompletosNovo.reduce((a,r)=>a+(parseFloat(r['CUB']||0)||0),0).toFixed(2),
+    docasUsadas: docasUsadas,
+    totalDocas: docasUsadas.length,
+    motoristas: uniqueMots,
+    totalMotoristas: uniqueMots.length,
+    lacresLV: lacresLVNovo,
+    lacresBau: lacresBauNovo,
+    totalLacresLV: Object.keys(lacresLVNovo).length,
+    totalLacresBAU: Object.keys(lacresBauNovo).length,
+    docaDetalhe: docaDetalhe,
+    dadosCompletos: dadosCompletosNovo,
+  });
+
+  db.collection('logix_historico').doc(String(_edHistId)).set(registroAtualizado)
+    .then(() => {
+      fecharEdicaoHistorico();
+      toast('✅ Operação atualizada com sucesso para toda a equipe', 'ok');
+    })
+    .catch(err => {
+      console.error(err);
+      errEl.textContent = '❌ Falha ao sincronizar as alterações. Verifique sua conexão e tente novamente.';
+      errEl.style.display = 'block';
+    });
 }
 
 function limparHistorico() {
