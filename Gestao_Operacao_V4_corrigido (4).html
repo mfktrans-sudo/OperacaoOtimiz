@@ -3414,9 +3414,22 @@ function salvarEdicaoHistoricoCompleta() {
       // wizard (rawData → Passo 3/4, optResult → Passo 5) para que as telas
       // não fiquem desencontradas — antes disso, rawData nunca era restaurado
       // aqui e o Passo 3/4/5 acabavam exibindo dados vazios ou de outra operação.
-      rawData = dadosCompletosNovo;
-      optResult = construirOptResultDeEdicao(dadosCompletosNovo);
-      lacresLV = lacresLVNovo;
+      // Reordena as linhas por SEQ crescente — no histórico elas ficam
+      // agrupadas por doca/onda, então sem isso as tabelas do Passo 3/4
+      // (Revisar e Lacres) apareciam fora de ordem numérica. Também
+      // realinhamos o índice interno (_idx) de cada linha com a nova
+      // posição, exatamente como acontece no upload original de um arquivo
+      // novo — assim os lacres continuam batendo com a loja/linha certa.
+      const linhasOrdenadasPorSeq = dadosCompletosNovo.slice().sort((a, b) =>
+        (parseFloat(a['SEQ.']||0)||0) - (parseFloat(b['SEQ.']||0)||0));
+      const lacresLVReindexado = {};
+      linhasOrdenadasPorSeq.forEach((r, i) => {
+        if (lacresLVNovo[r._idx] !== undefined) lacresLVReindexado[i] = lacresLVNovo[r._idx];
+        r._idx = i;
+      });
+      rawData = linhasOrdenadasPorSeq;
+      optResult = construirOptResultDeEdicao(linhasOrdenadasPorSeq);
+      lacresLV = lacresLVReindexado;
       lacresBau = lacresBauNovo;
       // Restaura a sequência de entregas (via TS) salva junto deste registro,
       // para os painéis do Passo 5 baterem com esta operação específica.
