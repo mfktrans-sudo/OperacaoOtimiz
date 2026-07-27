@@ -1641,22 +1641,41 @@ function executarOtimizacao() {
     } else naoAloc.push(row);
   });
 
-  const ondaSize = Math.ceil(naoAloc.length / ondasVar);
-  naoAloc.forEach((row, idx) => {
+  // Agrupa as linhas não fixas pelo mesmo motorista, para que todas as lojas
+  // atendidas pelo mesmo motorista (mesmo caminhão) sejam sempre alocadas
+  // JUNTAS na mesma doca e na mesma onda, em vez de serem distribuídas
+  // separadamente linha a linha.
+  const gruposMot = [];
+  const gruposIdx = {};
+  naoAloc.forEach(row => {
+    const nome = String(row[colMot] || row['MOTORISTA'] || '').trim().toUpperCase();
+    const chave = nome || `__semnome_${gruposMot.length}`;
+    if (!(chave in gruposIdx)) {
+      gruposIdx[chave] = gruposMot.length;
+      gruposMot.push({ nome: chave, rows: [] });
+    }
+    gruposMot[gruposIdx[chave]].rows.push(row);
+  });
+
+  const ondaSize = Math.ceil(gruposMot.length / ondasVar);
+  gruposMot.forEach((grupo, idx) => {
     const ondaAtual = Math.floor(idx / ondaSize) + 2;
+    const volGrupo = grupo.rows.reduce((s, row) => s + (parseFloat(row['VOLUMES']||0)||0), 0);
+    const nfGrupo  = grupo.rows.reduce((s, row) => s + (parseFloat(row['QTD NF']||0)||0), 0);
     let best = null, bestPeso = Infinity;
     numerosDocas.forEach(num => {
       const d = dm[num];
-      const vol = parseFloat(row['VOLUMES']||0)||0, nf = parseFloat(row['QTD NF']||0)||0;
-      if (maxVol > 0 && d.vol + vol > maxVol) return;
-      if (maxNF > 0 && d.nf + nf > maxNF) return;
+      if (maxVol > 0 && d.vol + volGrupo > maxVol) return;
+      if (maxNF > 0 && d.nf + nfGrupo > maxNF) return;
       const peso = d.vol;
       if (peso < bestPeso) { bestPeso = peso; best = num; }
     });
     if (!best) best = docaFallback;
-    const vol = parseFloat(row['VOLUMES']||0)||0, nf = parseFloat(row['QTD NF']||0)||0, cub = parseFloat(row['CUB']||0)||0;
-    dm[best].rows.push({ ...row, _doca: best, _onda: ondaAtual, _fixo: false });
-    dm[best].vol += vol; dm[best].nf += nf; dm[best].cub += cub;
+    grupo.rows.forEach(row => {
+      const vol = parseFloat(row['VOLUMES']||0)||0, nf = parseFloat(row['QTD NF']||0)||0, cub = parseFloat(row['CUB']||0)||0;
+      dm[best].rows.push({ ...row, _doca: best, _onda: ondaAtual, _fixo: false });
+      dm[best].vol += vol; dm[best].nf += nf; dm[best].cub += cub;
+    });
   });
 
   optResult = { docaMap: dm, numerosDocas };
