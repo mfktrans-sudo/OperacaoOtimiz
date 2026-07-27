@@ -338,6 +338,7 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
     <button class="btn btn-ghost btn-sm" onclick="nav('config')">⚙️ Config</button>
     <button class="btn btn-ghost btn-sm" onclick="abrirGerenciarSenha()" title="Gerenciar senha de exclusão">🔐 Senha</button>
     <button class="btn btn-ghost btn-sm" onclick="nav('historico')">📁 Histórico</button>
+    <button class="btn btn-ghost btn-sm" onclick="nav('backup');atualizarBackupInfo()">💾 Backup</button>
   </div>
 </div>
 
@@ -353,6 +354,7 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
   <div class="sicon" onclick="nav('motoristas')" id="s-motoristas" title="Motoristas Fixos">⭐<span class="sbadge" id="smot" style="display:none">0</span></div>
   <div class="sicon" onclick="nav('config')" id="s-config" title="Configurações">⚙️</div>
   <div class="sicon" onclick="nav('historico')" id="s-historico" title="Histórico">📁</div>
+  <div class="sicon" onclick="nav('backup');atualizarBackupInfo()" id="s-backup" title="Backup / Upload do Histórico">🗄️</div>
   <div class="sep"></div>
   <div class="sicon" onclick="downloadExcel()" title="Baixar Excel">💾</div>
 </div>
@@ -852,6 +854,45 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
       </div>
       <div id="historicoDetalheCont"></div>
     </div>
+  </div>
+</div>
+
+<div class="page" id="page-backup">
+  <div class="ph">
+    <div class="ph-left">
+      <div class="ph-tag">● BACKUP DE DADOS</div>
+      <div class="ph-title">Upload &amp; Backup Completo do Histórico</div>
+      <div class="ph-sub">Baixe um arquivo de backup com todos os registros do Histórico ou restaure um backup salvo anteriormente</div>
+    </div>
+    <div class="flex gap-8">
+      <button class="btn btn-ghost btn-sm" onclick="voltarWizard()">← Voltar ao Fluxo</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title"><span class="dot-accent"></span> Baixar Backup Completo</div>
+    </div>
+    <div style="padding:16px;font-size:13px;color:var(--text2);">
+      Gera um arquivo <strong>.json</strong> com todos os registros atualmente salvos no Histórico (<span id="bkTotalRegistros">0</span> registro(s)). Guarde esse arquivo em local seguro — ele pode ser usado para restaurar os dados nesta ferramenta a qualquer momento.
+    </div>
+    <div style="padding:0 16px 16px;">
+      <button class="btn btn-success btn-sm" onclick="baixarBackupHistorico()">💾 Baixar Backup Completo (.json)</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="card-head">
+      <div class="card-title"><span class="dot-accent"></span> Upload / Restaurar Backup</div>
+    </div>
+    <div style="padding:16px;font-size:13px;color:var(--text2);">
+      Selecione um arquivo <strong>.json</strong> de backup gerado por esta ferramenta para restaurar os registros no Histórico. Os registros restaurados são sincronizados para toda a equipe e essa ação é protegida por senha de administrador.
+    </div>
+    <div style="padding:0 16px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <input type="file" id="bkArquivoInput" accept="application/json,.json" style="font-size:13px;color:var(--text2);">
+      <button class="btn btn-accent btn-sm" onclick="restaurarBackupHistorico()">📤 Restaurar Backup</button>
+    </div>
+    <div id="bkRestaurarStatus" style="padding:0 16px 16px;font-size:12px;color:var(--text2);"></div>
   </div>
 </div>
 
@@ -3334,6 +3375,84 @@ function liberarEspacoLocalStorage() {
   const liberadoKB = antesKB - depoisKB;
   toast(`🔧 Espaço liberado: ${liberadoKB}KB (antes: ${antesKB}KB → depois: ${depoisKB}KB)`, 'ok');
   renderHistorico();
+}
+
+// ══════════════════════════════════
+//  BACKUP / UPLOAD COMPLETO DO HISTÓRICO
+// ══════════════════════════════════
+function atualizarBackupInfo() {
+  const el = document.getElementById('bkTotalRegistros');
+  if (el) el.textContent = historicoCache.length;
+}
+
+function baixarBackupHistorico() {
+  if (!historicoCache.length) { toast('⚠️ Não há registros no histórico para gerar backup', 'err'); return; }
+  try {
+    const payload = {
+      tipo: 'logix_backup_historico',
+      geradoEm: new Date().toISOString(),
+      totalRegistros: historicoCache.length,
+      registros: historicoCache,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    a.href = url;
+    a.download = `LOGIX_Backup_Historico_${stamp}.json`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+    toast('💾 Backup do histórico gerado com sucesso!', 'ok');
+  } catch(e) {
+    toast('❌ Erro ao gerar backup: '+e.message, 'err');
+  }
+}
+
+function restaurarBackupHistorico() {
+  const input = document.getElementById('bkArquivoInput');
+  const statusEl = document.getElementById('bkRestaurarStatus');
+  if (!input || !input.files || !input.files[0]) { toast('⚠️ Selecione um arquivo de backup (.json)', 'err'); return; }
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    let dados;
+    try {
+      const parsed = JSON.parse(e.target.result);
+      dados = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.registros) ? parsed.registros : null);
+    } catch(err) {
+      toast('❌ Arquivo inválido — não é um JSON de backup reconhecível', 'err');
+      return;
+    }
+    if (!dados || !dados.length) {
+      toast('❌ Arquivo não contém registros de histórico válidos', 'err');
+      return;
+    }
+    pedirSenha(() => {
+      if (statusEl) statusEl.textContent = `⏳ Restaurando ${dados.length} registro(s)...`;
+      const CHUNK = 400; // limite seguro de operações por lote no Firestore
+      let idx = 0;
+      const proximoLote = () => {
+        const lote = dados.slice(idx, idx + CHUNK);
+        if (!lote.length) {
+          if (statusEl) statusEl.textContent = `✅ ${dados.length} registro(s) restaurado(s) com sucesso.`;
+          toast('📤 Backup restaurado com sucesso — sincronizado para toda a equipe', 'ok');
+          input.value = '';
+          return;
+        }
+        const batch = db.batch();
+        lote.forEach(reg => { if (reg && reg.id != null) batch.set(db.collection('logix_historico').doc(String(reg.id)), reg); });
+        batch.commit()
+          .then(() => { idx += CHUNK; proximoLote(); })
+          .catch(err => {
+            console.error(err);
+            if (statusEl) statusEl.textContent = `⚠️ Falha ao restaurar — verifique sua conexão.`;
+            toast('⚠️ Falha ao restaurar backup — verifique sua conexão', 'err');
+          });
+      };
+      proximoLote();
+    }, { titulo: '🔓 Confirmar Restauração', textoBtn: '📤 Restaurar', classeBtn: 'btn-accent' });
+  };
+  reader.readAsText(file);
 }
 
 // ══════════════════════════════════
