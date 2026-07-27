@@ -686,6 +686,9 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
           <button class="btn btn-gold btn-lg" onclick="finalizarProcesso()" id="btnFinalizarProcesso" style="gap:10px;">
             <span>🏁</span><span>Finalizar Processo</span>
           </button>
+          <button class="btn btn-gold btn-lg" onclick="finalizarEdicaoHistorico()" id="btnFinalizarEdicao" style="gap:10px;display:none;">
+            <span>✅</span><span>Finalizar Edição</span>
+          </button>
         </div>
       </div>
     </div>
@@ -1104,6 +1107,7 @@ let wizardMaxUnlocked = 1;
 let tsData = null; // dados carregados do arquivo TS (sequência de entregas)
 let processoIniciadoEm = null; // timestamp de início da operação em andamento (para "tempo total da operação")
 let usuarioResponsavel = ''; // e-mail do usuário logado (Firebase Auth)
+let modoEdicaoAtiva = false; // true quando o Passo 5 está exibindo uma edição de operação já finalizada (não uma otimização nova)
 let autoSaveTimer = null; // debounce do AutoSave
 let aplicandoRemoto = false; // true enquanto aplicamos uma atualização vinda de outro usuário (evita eco/loop)
 let unsubEstado = null, unsubConfig = null, unsubHistorico = null; // handles dos listeners do Firestore
@@ -1463,6 +1467,7 @@ function fmtDate(d) {
 function clearFile() {
   rawData = []; lacresLV = {}; lacresBau = {}; optResult = null;
   processoIniciadoEm = null;
+  modoEdicaoAtiva = false;
   document.getElementById('previewSec').style.display = 'none';
   document.getElementById('fi').value = '';
   wizardMaxUnlocked = 2;
@@ -1484,6 +1489,7 @@ function limparTodosDados() {
   tsData = null;
   colsDetected = [];
   processoIniciadoEm = null;
+  modoEdicaoAtiva = false;
 
   const fi = document.getElementById('fi');
   if (fi) fi.value = '';
@@ -1610,6 +1616,7 @@ function filtrarOtimPreview() {
 function executarOtimizacao() {
   if (!rawData.length) { toast('⚠️ Faça upload primeiro', 'err'); return; }
   if (!docasDisponiveis.length) { toast('⚠️ Configure as docas primeiro', 'err'); wizNav(1); return; }
+  modoEdicaoAtiva = false;
 
   let numerosDocas = [...docasDisponiveis];
   const ondasVar = Math.max(1, parseInt(document.getElementById('ondasSel').value) || 3);
@@ -1722,6 +1729,38 @@ function normalizarOndas(result) {
 }
 
 function voltarOtimizacao() { optResult = null; updateBadges(); wizardMaxUnlocked = Math.min(wizardMaxUnlocked, 3); wizNav(3); }
+
+// ══════════════════════════════════
+//  CARREGAR EDIÇÃO DE HISTÓRICO NO PASSO 5
+// ══════════════════════════════════
+// Reconstrói a estrutura docaMap/numerosDocas (mesmo formato usado por
+// executarOtimizacao) a partir das linhas já editadas e salvas no histórico,
+// para exibir o resultado no Passo 5 e permitir gerar os Excels normalmente.
+function construirOptResultDeEdicao(dadosCompletos) {
+  const dm = {};
+  const numerosDocas = [];
+  dadosCompletos.forEach(r => {
+    const doca = r._doca || 'SEM DOCA';
+    if (!dm[doca]) { dm[doca] = { rows: [], vol: 0, nf: 0, cub: 0 }; numerosDocas.push(doca); }
+    dm[doca].rows.push(r);
+    dm[doca].vol += parseFloat(r['VOLUMES']||0)||0;
+    dm[doca].nf  += parseFloat(r['QTD NF']||0)||0;
+    dm[doca].cub += parseFloat(r['CUB']||0)||0;
+  });
+  numerosDocas.sort((a,b) => ((parseFloat(a)||0) - (parseFloat(b)||0)) || String(a).localeCompare(String(b)));
+  return { docaMap: dm, numerosDocas };
+}
+
+// Chamada quando o usuário termina de mexer numa operação carregada do
+// Histórico. Os dados já foram sincronizados no Firestore por
+// salvarEdicaoHistoricoCompleta() — aqui só encerramos a sessão de edição
+// (sem criar um novo registro no histórico, diferente de finalizarProcesso()).
+function finalizarEdicaoHistorico() {
+  modoEdicaoAtiva = false;
+  limparTodosDados();
+  wizNav(1);
+  toast('✅ Edição finalizada — pronto para uma nova operação', 'ok');
+}
 
 // ══════════════════════════════════
 //  LACRES
@@ -2013,6 +2052,16 @@ function renderResultado() {
   renderPainelAprovacao();
   renderSequenciaTS();
   renderPainelMultiplasEntregas();
+
+  // Alterna os botões de finalização conforme o Passo 5 esteja mostrando
+  // uma otimização nova (Finalizar Processo) ou uma edição de operação
+  // já finalizada, carregada a partir do Histórico (Finalizar Edição).
+  const btnFP = document.getElementById('btnFinalizarProcesso');
+  const btnFE = document.getElementById('btnFinalizarEdicao');
+  if (btnFP && btnFE) {
+    btnFP.style.display = modoEdicaoAtiva ? 'none' : '';
+    btnFE.style.display = modoEdicaoAtiva ? '' : 'none';
+  }
 }
 
 function renderPainelAprovacao() {
@@ -3356,8 +3405,18 @@ function salvarEdicaoHistoricoCompleta() {
 
   db.collection('logix_historico').doc(String(_edHistId)).set(registroAtualizado)
     .then(() => {
+      // Carrega a operação recém-editada no Passo 5, já que na maioria das
+      // vezes será necessário gerar os Excels (Conferentes/Otimização) em
+      // seguida com os dados atualizados.
+      optResult = construirOptResultDeEdicao(dadosCompletosNovo);
+      lacresLV = lacresLVNovo;
+      lacresBau = lacresBauNovo;
+      modoEdicaoAtiva = true;
       fecharEdicaoHistorico();
-      toast('✅ Operação atualizada com sucesso para toda a equipe', 'ok');
+      updateBadges();
+      unlockStep(5);
+      wizNav(5);
+      toast('✅ Operação atualizada — dados carregados no Passo 5', 'ok');
     })
     .catch(err => {
       console.error(err);
