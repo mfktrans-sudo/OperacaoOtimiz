@@ -702,6 +702,7 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
         </div>
         <div class="flex gap-8">
           <button class="btn btn-success" onclick="downloadExcel()">💾 Gerar Excel</button>
+          <button class="btn" style="background:rgba(0,230,118,.12);color:var(--green);border:1px solid rgba(0,230,118,.25);" onclick="gerarExcelConferentes()">📋 Gerar Excel Conferentes</button>
         </div>
       </div>
     </div>
@@ -2748,6 +2749,10 @@ function salvarHistorico() {
       'DOCA-05': r['DOCA-05']||r['DOCA05']||'', 'DOCA': r['DOCA']||'',
       _idx: r._idx, _doca: r._doca, _onda: r._onda, _fixo: r._fixo||false,
     })),
+    // Preserva a sequência de entregas (via arquivo TS) desta operação específica,
+    // para que os painéis "Sequência de Entrega por Lojas" e "Motoristas com Múltiplas
+    // Entregas" continuem corretos quando o registro for reaberto/editado depois.
+    tsData: tsData ? JSON.parse(JSON.stringify(tsData)) : null,
   };
 
   db.collection('logix_historico').doc(String(registro.id)).set(registro)
@@ -3286,7 +3291,7 @@ function abrirEdicaoHistoricoCompleta(id) {
     'QTD NF': r['QTD NF']||0, 'VOLUMES': r['VOLUMES']||0, 'CUB': r['CUB']||0,
     'TIPO': r['TIPO']||'', 'MOTORISTA': r['MOTORISTA']||'',
     'RG': r['RG']||'', 'CPF': r['CPF']||'', 'PLACA': r['PLACA']||'', 'TELEFONE': r['TELEFONE']||'',
-    'DOCA-05': r['DOCA-05']||'', 'DOCA': r['DOCA']||'',
+    'DOCA-05': r['DOCA-05']||'', 'DOCA': r._doca || r['DOCA'] || '',
     'LACRE-LV': lv[r._idx] || '',
     'LACRE-BAU': bau[String(r['MOTORISTA']||'').trim().toUpperCase()] || '',
   }));
@@ -3405,18 +3410,26 @@ function salvarEdicaoHistoricoCompleta() {
 
   db.collection('logix_historico').doc(String(_edHistId)).set(registroAtualizado)
     .then(() => {
-      // Carrega a operação recém-editada no Passo 5, já que na maioria das
-      // vezes será necessário gerar os Excels (Conferentes/Otimização) em
-      // seguida com os dados atualizados.
+      // Carrega a operação recém-editada em todas as variáveis usadas pelo
+      // wizard (rawData → Passo 3/4, optResult → Passo 5) para que as telas
+      // não fiquem desencontradas — antes disso, rawData nunca era restaurado
+      // aqui e o Passo 3/4/5 acabavam exibindo dados vazios ou de outra operação.
+      rawData = dadosCompletosNovo;
       optResult = construirOptResultDeEdicao(dadosCompletosNovo);
       lacresLV = lacresLVNovo;
       lacresBau = lacresBauNovo;
+      // Restaura a sequência de entregas (via TS) salva junto deste registro,
+      // para os painéis do Passo 5 baterem com esta operação específica.
+      tsData = registroAtualizado.tsData ? JSON.parse(JSON.stringify(registroAtualizado.tsData)) : null;
       modoEdicaoAtiva = true;
       fecharEdicaoHistorico();
       updateBadges();
+      // Libera os passos 3, 4 e 5 para navegação e leva o usuário para o
+      // Passo 3 (Revisar), com os lacres já preenchidos preservados —
+      // eles só serão perdidos se o usuário apagá-los manualmente.
       unlockStep(5);
-      wizNav(5);
-      toast('✅ Operação atualizada — dados carregados no Passo 5', 'ok');
+      wizNav(3);
+      toast('✅ Operação atualizada — revise os dados no Passo 3 (lacres já preenchidos foram mantidos)', 'ok');
     })
     .catch(err => {
       console.error(err);
