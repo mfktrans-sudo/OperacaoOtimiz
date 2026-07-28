@@ -165,10 +165,10 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 .doca-lbl { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: .1em; }
 .doca-stats { display: flex; gap: 5px; flex-wrap: wrap; }
 .doca-body { padding: 10px; }
-.doca-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 9px; border-radius: 7px; margin-bottom: 3px; background: rgba(255,255,255,.02); font-size: 11px; border: 1px solid transparent; transition: all .15s; }
+.doca-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; row-gap: 4px; padding: 7px 9px; border-radius: 7px; margin-bottom: 3px; background: rgba(255,255,255,.02); font-size: 11px; border: 1px solid transparent; transition: all .15s; }
 .doca-row.fixo { border-color: rgba(255,184,0,.2); background: rgba(255,184,0,.04); }
 .doca-row-name { font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 5px; }
-.doca-row-info { display: flex; gap: 5px; align-items: center; }
+.doca-row-info { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .doca-bar-wrap { height: 3px; background: var(--border); border-radius: 99px; overflow: hidden; margin-top: 10px; }
 .doca-bar { height: 100%; background: var(--accent); border-radius: 99px; transition: width .5s; }
 .doca-bar.warn { background: var(--red); }
@@ -1113,6 +1113,26 @@ let autoSaveTimer = null; // debounce do AutoSave
 let aplicandoRemoto = false; // true enquanto aplicamos uma atualização vinda de outro usuário (evita eco/loop)
 let unsubEstado = null, unsubConfig = null, unsubHistorico = null; // handles dos listeners do Firestore
 let historicoCache = []; // espelho local do histórico sincronizado via Firestore
+
+// Reconhecimento de Motorista Fixo — usado tanto na pré-visualização do
+// Passo 3 (Revisar e Otimizar) quanto na otimização em si, para que os dois
+// lugares sempre concordem sobre quem é fixo.
+// Normaliza o nome (maiúsculas + colapsa espaços duplicados) para o match
+// não falhar por causa de espaçamento na planilha.
+const normNomeMot = s => String(s||'').trim().toUpperCase().replace(/\s+/g, ' ');
+function encontrarMotoristaFixo(nomeLinha) {
+  nomeLinha = normNomeMot(nomeLinha);
+  if (!nomeLinha) return null;
+  const motMap = {};
+  motoristas.forEach(m => { motMap[normNomeMot(m.nome)] = m; });
+  if (motMap[nomeLinha]) return motMap[nomeLinha];
+  // Se não houver correspondência exata, aceita quando um dos nomes contém
+  // o outro por completo — cobre casos em que o nome na planilha tem um
+  // sobrenome/sufixo a mais ou a menos do que o cadastrado como fixo,
+  // garantindo que o motorista fixo sempre seja reconhecido e fique na 1ª onda.
+  const chave = Object.keys(motMap).find(k => nomeLinha.includes(k) || k.includes(nomeLinha));
+  return chave ? motMap[chave] : null;
+}
 let _senhaCache = null, _senhaDicaCache = '';
 let _erroSincronizacaoConfig = null; // guarda a última falha de sincronização de config/senha, para exibir na tela
 
@@ -1540,7 +1560,7 @@ function renderPreview() {
   const preview = rawData.slice(0, 10);
   let html = '<table><thead><tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr></thead><tbody>';
   preview.forEach(row => {
-    const isFixo = motoristas.some(m => m.nome === String(row['MOTORISTA']||'').trim().toUpperCase());
+    const isFixo = !!encontrarMotoristaFixo(row['MOTORISTA']);
     html += `<tr${isFixo?' class="fixo-row"':''}>`;
     cols.forEach(c => {
       let v = row[c] ?? '';
@@ -1577,10 +1597,11 @@ function renderOtimPage() {
   }
   const tVol = rawData.reduce((a,r)=>a+(parseFloat(r['VOLUMES']||0)||0),0);
   const tNF  = rawData.reduce((a,r)=>a+(parseFloat(r['QTD NF']||0)||0),0);
-  const fixCt = rawData.filter(r=>motoristas.some(m=>m.nome===String(r['MOTORISTA']||'').trim().toUpperCase())).length;
+  const fixCt = rawData.filter(r=>encontrarMotoristaFixo(r['MOTORISTA'])).length;
+  const fixUnicos = new Set(rawData.map(r=>{ const f = encontrarMotoristaFixo(r['MOTORISTA']); return f ? f.nome : null; }).filter(Boolean)).size;
   document.getElementById('otimStats').innerHTML = `
     <div class="stat-card"><div class="stat-lbl">Total Cargas</div><div class="stat-val" style="color:var(--accent)">${rawData.length}</div></div>
-    <div class="stat-card"><div class="stat-lbl">Fixos Detectados</div><div class="stat-val" style="color:var(--gold)">${fixCt}</div><div class="stat-sub">1ª onda garantida</div></div>
+    <div class="stat-card"><div class="stat-lbl">Fixos Detectados</div><div class="stat-val" style="color:var(--gold)">${fixUnicos}</div><div class="stat-sub">1ª onda garantida</div></div>
     <div class="stat-card"><div class="stat-lbl">Variáveis</div><div class="stat-val" style="color:var(--purple)">${rawData.length-fixCt}</div></div>
     <div class="stat-card"><div class="stat-lbl">Total Volumes</div><div class="stat-val" style="color:var(--green)">${tVol}</div></div>
     <div class="stat-card"><div class="stat-lbl">Total NFs</div><div class="stat-val" style="color:var(--text)">${tNF}</div></div>`;
@@ -1592,7 +1613,7 @@ function renderOtimPage() {
   const cols = ['SEQ.','DATA','LOJA','MOTORISTA','QTD NF','VOLUMES','CUB','TIPO','PLACA'];
   let html = '<table><thead><tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr></thead><tbody>';
   rawData.forEach(row => {
-    const isFixo = motoristas.some(m=>m.nome===String(row['MOTORISTA']||'').trim().toUpperCase());
+    const isFixo = !!encontrarMotoristaFixo(row['MOTORISTA']);
     html += `<tr${isFixo?' class="fixo-row"':''}>`;
     cols.forEach(c => {
       let v = row[c] ?? '';
@@ -1635,13 +1656,11 @@ function executarOtimizacao() {
 
   const dm = {};
   numerosDocas.forEach(n => { dm[n] = { rows: [], vol: 0, nf: 0, cub: 0 }; });
-  const motMap = {};
-  motoristas.forEach(m => { motMap[m.nome.toUpperCase()] = m; });
 
   const naoAloc = [];
   dados.forEach(row => {
-    const nome = String(row[colMot] || row['MOTORISTA'] || '').trim().toUpperCase();
-    const fix = motMap[nome];
+    const nome = row[colMot] || row['MOTORISTA'];
+    const fix = encontrarMotoristaFixo(nome);
     if (fix && dm[fix.doca]) {
       const vol = parseFloat(row['VOLUMES']||0)||0, nf = parseFloat(row['QTD NF']||0)||0, cub = parseFloat(row['CUB']||0)||0;
       dm[fix.doca].rows.push({ ...row, _doca: fix.doca, _onda: 1, _fixo: true });
@@ -1806,7 +1825,7 @@ function renderLacreTable() {
     let bauHtml = '';
     uniqueMotoristas.forEach(nome => {
       const val = lacresBau[nome] || '';
-      const isFixo = motoristas.some(m => m.nome === nome);
+      const isFixo = !!encontrarMotoristaFixo(nome);
       const hasVal = !!val;
       bauHtml += `<div class="bau-row" style="${hasVal?'border-color:rgba(255,184,0,.35);background:rgba(255,184,0,.05);':''}">
         <div class="bau-label" title="${nome}">${isFixo?'⭐ ':''}${nome.split(' ').slice(0,2).join(' ')}</div>
@@ -1825,7 +1844,7 @@ function renderLacreTable() {
   </tr></thead><tbody>`;
   rawData.forEach((row, i) => {
     const nome = String(row['MOTORISTA']||'').trim().toUpperCase();
-    const isFixo = motoristas.some(m => m.nome === nome);
+    const isFixo = !!encontrarMotoristaFixo(nome);
     const lvVal = lacresLV[i] || '';
     const bauVal = lacresBau[nome] || '';
     const lvMissing = !lvVal;
@@ -3258,10 +3277,11 @@ const ED_HIST_CAMPOS = [
   { key:'TELEFONE', label:'Telefone' },
   { key:'DOCA-05', label:'Doca-05' },
   { key:'DOCA', label:'Doca' },
+  { key:'_onda', label:'Onda' },
   { key:'LACRE-LV', label:'Lacre LV' },
   { key:'LACRE-BAU', label:'Lacre BAÚ' },
 ];
-const ED_HIST_CAMPOS_NUM = ['QTD NF','VOLUMES','CUB','SEQ.'];
+const ED_HIST_CAMPOS_NUM = ['QTD NF','VOLUMES','CUB','SEQ.','_onda'];
 
 let _edHistId = null;
 let _edHistLinhas = [];
