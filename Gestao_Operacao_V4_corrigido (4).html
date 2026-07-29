@@ -2412,6 +2412,27 @@ function processTSFile(file) {
             rg: motInfo.rg || '',
             cpf: motInfo.cpf || '',
           });
+        } else {
+          // Fallback: quando o bloco de par de entrega vem vazio (dias com
+          // poucas cargas, ex.: apenas 3 caminhões, 1 loja cada), o nome da
+          // loja fica no bloco "OTIMIZADO" (col K/L) em vez do bloco de pares.
+          // Cada linha desse bloco representa 1 caminhão com carga única.
+          const lojaUnicaA = rowA[11] ? String(rowA[11]).trim() : null;
+          const lojaUnicaB = rowB && rowB[11] ? String(rowB[11]).trim() : null;
+          [lojaUnicaA, lojaUnicaB].forEach(lojaUnica => {
+            if (!lojaUnica) return;
+            const lojaUp = lojaUnica.toUpperCase();
+            const motInfo = motorMap[lojaUp] || {};
+            grupos.push({
+              truck: grupos.length + 1,
+              loja1: lojaUnica,
+              loja2: null,
+              motorista: motInfo.motorista || null,
+              placa: motInfo.placa || '',
+              rg: motInfo.rg || '',
+              cpf: motInfo.cpf || '',
+            });
+          });
         }
         i += 2;
       }
