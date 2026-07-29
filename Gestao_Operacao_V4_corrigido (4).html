@@ -1107,6 +1107,7 @@ let wizardStep = 1;
 let wizardMaxUnlocked = 1;
 let tsData = null; // dados carregados do arquivo TS (sequência de entregas)
 let tsDataLimpezaExplicita = false; // true só durante limparTodosDados(), para permitir que o autosave grave tsData=null; fora disso, um tsData local nulo nunca apaga um valor já sincronizado no Firestore (evita que outra aba/sessão sem o TS carregado localmente sobrescreva o TS de todo mundo)
+let tsPendingLocalSave = false; // true entre o momento em que o arquivo TS é carregado/removido localmente e a confirmação de que o Firestore já gravou essa mudança. Enquanto true, o listener de sincronização (onSnapshot) NÃO pode sobrescrever tsData com o valor remoto, pois esse valor ainda não reflete o upload que acabou de acontecer nesta aba — sem essa trava, uma atualização remota concorrente chegando nesses ~500ms (janela do debounce do autosave) apaga o TS recém-carregado antes mesmo dele ser salvo.
 let processoIniciadoEm = null; // timestamp de início da operação em andamento (para "tempo total da operação")
 let usuarioResponsavel = ''; // e-mail do usuário logado (Firebase Auth)
 let modoEdicaoAtiva = false; // true quando o Passo 5 está exibindo uma edição de operação já finalizada (não uma otimização nova)
@@ -1172,7 +1173,11 @@ function iniciarSincronizacaoFirestore() {
     lacresLV = estado.lacresLV || {};
     lacresBau = estado.lacresBau || {};
     optResult = estado.optResult || null;
-    tsData = estado.tsData || null;
+    // Só aceita o tsData vindo do Firestore se não houver uma alteração local
+    // (upload ou remoção do TS) ainda pendente de confirmação — caso contrário
+    // manteríamos o valor recém-carregado nesta aba intacto até que o próprio
+    // autosave confirme a gravação remota.
+    if (!tsPendingLocalSave) tsData = estado.tsData || null;
     colsDetected = estado.colsDetected || [];
     processoIniciadoEm = estado.processoIniciadoEm || null;
     if (rawData.length) { renderPreview(); updateStatus(); }
@@ -1246,6 +1251,10 @@ function salvarEstadoSessao() {
     tsDataLimpezaExplicita = false;
   }
   db.collection('logix').doc('estadoAtual').set(estado, { merge: true }).then(() => {
+    // A gravação foi confirmada no Firestore — a partir de agora o valor
+    // remoto já reflete o tsData local, então é seguro voltar a aceitar
+    // atualizações do listener em tempo real sem risco de apagar o upload.
+    tsPendingLocalSave = false;
     const dot = document.getElementById('autosaveDot');
     const txt = document.getElementById('autosaveTxt');
     const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1525,6 +1534,7 @@ function limparTodosDados() {
   optResult = null;
   tsData = null;
   tsDataLimpezaExplicita = true;
+  tsPendingLocalSave = true;
   colsDetected = [];
   processoIniciadoEm = null;
   modoEdicaoAtiva = false;
@@ -2408,6 +2418,7 @@ function processTSFile(file) {
 
       const gruposValidos = grupos.filter(g => g.loja1);
       tsData = { grupos: gruposValidos, fileName: file.name, sheetName };
+      tsPendingLocalSave = true;
       agendarAutoSave();
 
       if (gruposValidos.length === 0) {
@@ -2461,6 +2472,7 @@ function processTSFile(file) {
 
 function clearTS() {
   tsData = null;
+  tsPendingLocalSave = true;
   document.getElementById('tsFi').value = '';
   document.getElementById('tsBadge').style.display = 'none';
   document.getElementById('tsClearBtn').style.display = 'none';
