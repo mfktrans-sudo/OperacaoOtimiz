@@ -1679,8 +1679,6 @@ function executarOtimizacao() {
   const colMot = (document.getElementById('cfgColMot') || {}).value || 'MOTORISTA';
   const filtroTipo = (document.getElementById('cfgTipo') || {}).value || '';
 
-  motoristas.forEach(m => { if (m.doca && !numerosDocas.includes(m.doca)) numerosDocas.push(m.doca); });
-
   let dados = rawData;
   if (filtroTipo.trim()) dados = dados.filter(r => String(r['TIPO']||'').toUpperCase().includes(filtroTipo.trim().toUpperCase()));
 
