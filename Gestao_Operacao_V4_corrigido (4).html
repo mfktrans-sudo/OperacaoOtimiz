@@ -1665,7 +1665,10 @@ function filtrarOtimPreview() {
 function executarOtimizacao() {
   if (!rawData.length) { toast('⚠️ Faça upload primeiro', 'err'); return; }
   if (!docasDisponiveis.length) { toast('⚠️ Configure as docas primeiro', 'err'); wizNav(1); return; }
-  modoEdicaoAtiva = false;
+  // ⚠️ Não zerar modoEdicaoAtiva aqui: se o usuário estiver editando um
+  // processo já finalizado (aberto via Histórico) e passar de novo por esta
+  // etapa, apagar essa flag fazia o Passo 5 achar que era um processo novo e
+  // criar um registro duplicado ao finalizar, em vez de atualizar o existente.
 
   let numerosDocas = [...docasDisponiveis];
   const ondasVar = Math.max(1, parseInt(document.getElementById('ondasSel').value) || 3);
