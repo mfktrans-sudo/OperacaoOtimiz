@@ -1106,6 +1106,7 @@ let docasDisponiveis = [];
 let wizardStep = 1;
 let wizardMaxUnlocked = 1;
 let tsData = null; // dados carregados do arquivo TS (sequência de entregas)
+let tsDataLimpezaExplicita = false; // true só durante limparTodosDados(), para permitir que o autosave grave tsData=null; fora disso, um tsData local nulo nunca apaga um valor já sincronizado no Firestore (evita que outra aba/sessão sem o TS carregado localmente sobrescreva o TS de todo mundo)
 let processoIniciadoEm = null; // timestamp de início da operação em andamento (para "tempo total da operação")
 let usuarioResponsavel = ''; // e-mail do usuário logado (Firebase Auth)
 let modoEdicaoAtiva = false; // true quando o Passo 5 está exibindo uma edição de operação já finalizada (não uma otimização nova)
@@ -1230,11 +1231,21 @@ function agendarAutoSave() {
 
 function salvarEstadoSessao() {
   const estado = {
-    rawData, lacresLV, lacresBau, optResult, tsData, colsDetected,
+    rawData, lacresLV, lacresBau, optResult, colsDetected,
     wizardStep, wizardMaxUnlocked, processoIniciadoEm,
     atualizadoPor: usuarioResponsavel, atualizadoEm: Date.now(),
   };
-  db.collection('logix').doc('estadoAtual').set(estado).then(() => {
+  // Só inclui tsData na gravação se houver um valor local real ou se for uma
+  // limpeza explícita (limparTodosDados) — assim, uma aba/sessão cujo tsData
+  // local ainda esteja nulo (ex.: acabou de carregar a página e o Firestore
+  // ainda não sincronizou) nunca sobrescreve com null o arquivo TS que já
+  // foi carregado por outra pessoa. merge:true preserva o campo tsData
+  // existente no Firestore quando ele não é enviado nesta gravação.
+  if (tsData !== null || tsDataLimpezaExplicita) {
+    estado.tsData = tsData;
+    tsDataLimpezaExplicita = false;
+  }
+  db.collection('logix').doc('estadoAtual').set(estado, { merge: true }).then(() => {
     const dot = document.getElementById('autosaveDot');
     const txt = document.getElementById('autosaveTxt');
     const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1437,11 +1448,16 @@ function processFile(file) {
       renderPreview();
       updateStatus();
       updateBadges();
-      unlockStep(3);
+      // Não desbloqueia o Passo 3 aqui: fazia com que a aba "3 Revisar e
+      // Otimizar" da barra de progresso ficasse clicável mesmo sem o
+      // arquivo TS carregado, permitindo pular a validação feita em
+      // avancarParaOtimizacao() (que só libera o Passo 3 quando Lista de
+      // Cargas E arquivo TS estão presentes).
       toast(`✅ ${rawData.length} registros carregados`, 'ok');
       agendarAutoSave();
       // Só avança automaticamente se o arquivo TS também estiver carregado
       if (tsData && tsData.grupos && tsData.grupos.length > 0) {
+        unlockStep(3);
         setTimeout(() => { wizNav(3); }, 800);
       }
     } catch (err) { toast('❌ Erro: ' + err.message, 'err'); }
@@ -1508,6 +1524,7 @@ function limparTodosDados() {
   lacresBau = {};
   optResult = null;
   tsData = null;
+  tsDataLimpezaExplicita = true;
   colsDetected = [];
   processoIniciadoEm = null;
   modoEdicaoAtiva = false;
@@ -2393,6 +2410,17 @@ function processTSFile(file) {
       tsData = { grupos: gruposValidos, fileName: file.name, sheetName };
       agendarAutoSave();
 
+      if (gruposValidos.length === 0) {
+        // Nenhum par de entrega reconhecido nesta aba — não mostra o selo
+        // verde de sucesso, para não passar a impressão de que o TS foi
+        // carregado corretamente quando na prática nada foi aproveitado.
+        document.getElementById('tsBadge').style.display = 'none';
+        document.getElementById('tsClearBtn').style.display = 'inline-flex';
+        document.getElementById('tsPreviewSec').style.display = 'none';
+        toast(`⚠️ Arquivo TS lido, mas nenhum par de entrega foi reconhecido na aba ${sheetName}. Verifique se é a aba OTIMIZ correta.`, 'err');
+        return;
+      }
+
       // Atualizar UI
       document.getElementById('tsBadge').style.display = 'inline-flex';
       document.getElementById('tsClearBtn').style.display = 'inline-flex';
@@ -2463,6 +2491,7 @@ function avancarParaOtimizacao() {
     return;
   }
   if (alertEl) alertEl.style.display = 'none';
+  unlockStep(3);
   wizNav(3);
 }
 
