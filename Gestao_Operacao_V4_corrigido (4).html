@@ -2389,6 +2389,7 @@ function processTSFile(file) {
       // A partir da linha 2 (idx 2): pares SEQ=1 / SEQ=2 em linhas consecutivas
       // Col 0 = SEQ., Col 1 = loja, Col 7 = número do caminhão (só na linha seq=1)
       const grupos = [];
+      const lojasUsadas = new Set(); // evita reprocessar/duplicar uma loja que já entrou em algum grupo
       let i = 2;
       while (i < raw.length) {
         const rowA = raw[i];
@@ -2413,16 +2414,24 @@ function processTSFile(file) {
             rg: motInfo.rg || '',
             cpf: motInfo.cpf || '',
           });
+          lojasUsadas.add(loja1Up);
+          if (loja2Up) lojasUsadas.add(loja2Up);
         } else {
           // Fallback: quando o bloco de par de entrega vem vazio (dias com
           // poucas cargas, ex.: apenas 3 caminhões, 1 loja cada), o nome da
           // loja fica no bloco "OTIMIZADO" (col K/L) em vez do bloco de pares.
           // Cada linha desse bloco representa 1 caminhão com carga única.
+          // OBS: esse bloco às vezes recapitula TODAS as lojas do dia (não só
+          // as que sobraram sem par), o que duplicava lojas que já tinham
+          // sido lidas acima como loja1/loja2 — por isso agora só entra aqui
+          // quem ainda não apareceu em nenhum grupo.
           const lojaUnicaA = rowA[11] ? String(rowA[11]).trim() : null;
           const lojaUnicaB = rowB && rowB[11] ? String(rowB[11]).trim() : null;
           [lojaUnicaA, lojaUnicaB].forEach(lojaUnica => {
             if (!lojaUnica) return;
             const lojaUp = lojaUnica.toUpperCase();
+            if (lojasUsadas.has(lojaUp)) return; // já apareceu em outro grupo — não duplica
+            lojasUsadas.add(lojaUp);
             const motInfo = motorMap[lojaUp] || {};
             grupos.push({
               truck: grupos.length + 1,
