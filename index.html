@@ -1727,7 +1727,12 @@ function executarOtimizacao() {
       // veículo (que pode ter várias lojas via TS), nunca a mistura de dois
       // motoristas diferentes.
       if (d.rows.some(r => r._onda === ondaAtual)) return;
-      const peso = d.vol;
+      // Prioriza a doca com MENOS ondas já em uso — evita abrir uma onda
+      // nova (ex: 4ª) numa doca enquanto outra doca ainda tem vaga dentro
+      // de uma onda que já existe (ex: 3ª). Volume só desempata entre
+      // docas com a mesma quantidade de ondas.
+      const numOndas = new Set(d.rows.map(r => r._onda)).size;
+      const peso = numOndas * 1000000 + d.vol;
       if (peso < bestPeso) { bestPeso = peso; best = num; }
     });
     if (!best) {
@@ -1737,7 +1742,8 @@ function executarOtimizacao() {
         const d = dm[num];
         if (maxVol > 0 && d.vol + volGrupo > maxVol) return;
         if (maxNF > 0 && d.nf + nfGrupo > maxNF) return;
-        const peso = d.vol;
+        const numOndas = new Set(d.rows.map(r => r._onda)).size;
+        const peso = numOndas * 1000000 + d.vol;
         if (peso < bestPeso) { bestPeso = peso; best = num; }
       });
     }
