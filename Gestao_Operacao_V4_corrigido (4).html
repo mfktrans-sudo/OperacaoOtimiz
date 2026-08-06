@@ -1722,9 +1722,25 @@ function executarOtimizacao() {
       const d = dm[num];
       if (maxVol > 0 && d.vol + volGrupo > maxVol) return;
       if (maxNF > 0 && d.nf + nfGrupo > maxNF) return;
+      // Não deixa um motorista/veículo diferente entrar na mesma doca+onda já
+      // ocupada por outro motorista — cada doca+onda é a vaga de um único
+      // veículo (que pode ter várias lojas via TS), nunca a mistura de dois
+      // motoristas diferentes.
+      if (d.rows.some(r => r._onda === ondaAtual)) return;
       const peso = d.vol;
       if (peso < bestPeso) { bestPeso = peso; best = num; }
     });
+    if (!best) {
+      // Nenhuma doca livre nessa onda: mantém o comportamento anterior
+      // (menor volume acumulado) para não travar a otimização.
+      numerosDocas.forEach(num => {
+        const d = dm[num];
+        if (maxVol > 0 && d.vol + volGrupo > maxVol) return;
+        if (maxNF > 0 && d.nf + nfGrupo > maxNF) return;
+        const peso = d.vol;
+        if (peso < bestPeso) { bestPeso = peso; best = num; }
+      });
+    }
     if (!best) best = docaFallback;
     grupo.rows.forEach(row => {
       const vol = parseFloat(row['VOLUMES']||0)||0, nf = parseFloat(row['QTD NF']||0)||0, cub = parseFloat(row['CUB']||0)||0;
