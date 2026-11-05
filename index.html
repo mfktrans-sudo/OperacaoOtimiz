@@ -245,6 +245,15 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
 .hist-month > summary { font-family: var(--cond); font-size: 15px; font-weight: 600; color: var(--text2); background: var(--surface); border: 1px solid var(--border); }
 .hist-day > summary { font-size: 12px; font-weight: 700; color: var(--text2); background: transparent; border: 1px dashed var(--border2); }
 
+.hist-chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.hist-chip { background: var(--surface2); border:1px solid var(--border); color: var(--text2); border-radius: 99px; padding: 4px 11px; font-size: 11px; font-weight:700; cursor:pointer; font-family: var(--mono); transition: all .15s; }
+.hist-chip:hover { border-color: var(--border2); color: var(--text); }
+.hist-chip.on { background: rgba(0,200,255,.14); border-color: var(--cyan, #00c8ff); color: var(--cyan, #00c8ff); }
+.hist-chip small { opacity:.7; margin-left:4px; }
+.hist-resumo { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
+.hist-fora { margin-top:10px; font-size:11px; color: var(--text3); }
+.hist-fora a { color: var(--cyan, #00c8ff); cursor:pointer; text-decoration: underline; }
+
 /* ─── SCROLLBAR ─── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
@@ -905,6 +914,32 @@ tr.erro-row td { background: rgba(255,61,90,.06) !important; }
     <div class="empty-icon">📁</div>
     <div class="empty-title">Nenhuma operação registrada</div>
     <div class="empty-sub">O histórico será salvo automaticamente ao clicar em "Finalizar Processo" no Passo 5</div>
+  </div>
+
+  <!-- Período (semana por padrão) -->
+  <div class="card" id="historicoPeriodo" style="display:none;">
+    <div class="card-head">
+      <div class="card-title"><span class="dot-accent"></span> Período</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label class="flabel" style="margin:0;">Exibir</label>
+        <select class="fselect" id="fhPeriodo" onchange="histSetPeriodo(this.value)" style="width:auto;">
+          <option value="semana">Semana</option>
+          <option value="mes">Mês</option>
+          <option value="30d">Últimos 30 dias</option>
+          <option value="tudo">Todo o histórico</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <button class="btn btn-ghost btn-sm" id="histPrev" onclick="histNav(-1)" title="Anterior">◀</button>
+      <div id="histPeriodoLabel" style="min-width:230px;text-align:center;font-weight:700;font-size:13px;"></div>
+      <button class="btn btn-ghost btn-sm" id="histNext" onclick="histNav(1)" title="Próximo">▶</button>
+      <button class="btn btn-ghost btn-sm" id="histHoje" onclick="histHoje()">Semana atual</button>
+    </div>
+    <div class="hist-resumo" id="histResumo"></div>
+    <div class="flabel" style="margin-top:14px;">Meses salvos — clique para abrir</div>
+    <div class="hist-chips" id="histChips"></div>
+    <div class="hist-fora" id="histForaEscopo"></div>
   </div>
 
   <!-- Filtros avançados -->
@@ -2998,10 +3033,65 @@ function limpiarLocalStorageSeBloqueado() {
 
 const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
+/* ───────── Período do histórico (semana por padrão) ───────── */
+let _histPeriodo = 'semana';   // semana | mes | 30d | tudo
+let _histSemanaOffset = 0;     // 0 = semana atual, -1 = anterior...
+let _histMes = '';             // 'AAAA-MM' (modo mês)
+
+function _histMesAtual() { const n = new Date(); return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0'); }
+function _histInicioSemana(offset) {
+  const n = new Date(); n.setHours(0,0,0,0);
+  const dow = (n.getDay() + 6) % 7;            // segunda = 0
+  n.setDate(n.getDate() - dow + (offset||0) * 7);
+  return n;
+}
+const _fmtDM = d => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0');
+
+// devolve {ini, fim, label} ou null (= sem limite)
+function _histEscopo() {
+  if (_histPeriodo === 'semana') {
+    const ini = _histInicioSemana(_histSemanaOffset);
+    const fim = new Date(ini); fim.setDate(fim.getDate() + 7); fim.setMilliseconds(-1);
+    const dom = new Date(ini); dom.setDate(dom.getDate() + 6);
+    return { ini, fim, label: `Semana ${_fmtDM(ini)} – ${_fmtDM(dom)}/${dom.getFullYear()}` + (_histSemanaOffset === 0 ? ' (atual)' : '') };
+  }
+  if (_histPeriodo === 'mes') {
+    if (!_histMes) _histMes = _histMesAtual();
+    const [a, m] = _histMes.split('-').map(Number);
+    return { ini: new Date(a, m-1, 1), fim: new Date(a, m, 1, 0, 0, 0, -1), label: `${MESES_PT[m-1]} de ${a}` };
+  }
+  if (_histPeriodo === '30d') {
+    const fim = new Date(); const ini = new Date(); ini.setHours(0,0,0,0); ini.setDate(ini.getDate() - 29);
+    return { ini, fim, label: `Últimos 30 dias (${_fmtDM(ini)} – ${_fmtDM(fim)})` };
+  }
+  return null;
+}
+
+function histSetPeriodo(v) {
+  _histPeriodo = v;
+  if (v === 'semana') _histSemanaOffset = 0;
+  if (v === 'mes' && !_histMes) _histMes = _histMesAtual();
+  aplicarFiltrosHistorico();
+}
+function histNav(delta) {
+  if (_histPeriodo === 'semana') { _histSemanaOffset = Math.min(0, _histSemanaOffset + delta); }
+  else if (_histPeriodo === 'mes') {
+    const [a, m] = (_histMes || _histMesAtual()).split('-').map(Number);
+    const d = new Date(a, m-1+delta, 1);
+    _histMes = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  }
+  aplicarFiltrosHistorico();
+}
+function histHoje() { _histPeriodo = 'semana'; _histSemanaOffset = 0; aplicarFiltrosHistorico(); }
+function histAbrirMes(chave) { _histPeriodo = 'mes'; _histMes = chave; aplicarFiltrosHistorico(); }
+function histVerTudo() { _histPeriodo = 'tudo'; aplicarFiltrosHistorico(); }
+
 function renderHistorico() {
   const todos = historicoCache;
   const filtrosEl = document.getElementById('historicoFiltros');
+  const perEl = document.getElementById('historicoPeriodo');
   if (filtrosEl) filtrosEl.style.display = todos.length ? 'block' : 'none';
+  if (perEl) perEl.style.display = todos.length ? 'block' : 'none';
   aplicarFiltrosHistorico(todos);
 }
 
@@ -3020,8 +3110,10 @@ function aplicarFiltrosHistorico(listaBase) {
   const responsavel = (document.getElementById('fhResponsavel')?.value || '').trim().toLowerCase();
   const busca = (document.getElementById('fhBusca')?.value || '').trim().toUpperCase();
   const status = document.getElementById('fhStatus')?.value || '';
+  const personalizado = !!(dataIni || dataFim);   // intervalo manual substitui o período
 
-  const filtrado = todos.filter(reg => {
+  // 1) filtros avançados (sobre TODO o histórico salvo)
+  const filtradoAvancado = todos.filter(reg => {
     const d = new Date(reg.dataProcessamento || reg.id);
     if (dataIni && d < new Date(dataIni + 'T00:00:00')) return false;
     if (dataFim && d > new Date(dataFim + 'T23:59:59')) return false;
@@ -3039,6 +3131,48 @@ function aplicarFiltrosHistorico(listaBase) {
     return true;
   });
 
+  // 2) período (semana / mês / 30 dias / tudo)
+  const escopo = personalizado ? null : _histEscopo();
+  const filtrado = escopo
+    ? filtradoAvancado.filter(reg => { const d = new Date(reg.dataProcessamento || reg.id); return d >= escopo.ini && d <= escopo.fim; })
+    : filtradoAvancado;
+
+  // ── controles do período ──
+  const selPer = document.getElementById('fhPeriodo'); if (selPer) selPer.value = _histPeriodo;
+  const lblEl = document.getElementById('histPeriodoLabel');
+  if (lblEl) lblEl.textContent = personalizado ? 'Intervalo personalizado (filtros avançados)' : (escopo ? escopo.label : 'Todo o histórico salvo');
+  const navOn = !personalizado && (_histPeriodo === 'semana' || _histPeriodo === 'mes');
+  ['histPrev','histNext'].forEach(id => { const b = document.getElementById(id); if (b) b.style.visibility = navOn ? 'visible' : 'hidden'; });
+  const nx = document.getElementById('histNext'); if (nx && navOn && _histPeriodo === 'semana') nx.disabled = _histSemanaOffset >= 0;
+  else if (nx) nx.disabled = (_histPeriodo === 'mes' && (_histMes || _histMesAtual()) >= _histMesAtual());
+  const bh = document.getElementById('histHoje'); if (bh) bh.style.display = (_histPeriodo === 'semana' && _histSemanaOffset === 0) || personalizado ? 'none' : '';
+
+  // resumo do período
+  const soma = f => filtrado.reduce((t, r) => t + (parseFloat(f(r)) || 0), 0);
+  const resEl = document.getElementById('histResumo');
+  if (resEl) resEl.innerHTML = filtrado.length ? `
+    <span class="badge bg-gray">📋 ${filtrado.length} registro${filtrado.length>1?'s':''}</span>
+    <span class="badge bg-cyan">🚚 ${soma(r=>r.totalCargas)} cargas</span>
+    <span class="badge bg-purple">${soma(r=>r.totalNF)} NF</span>
+    <span class="badge bg-gray">${soma(r=>r.totalVolumes)} vol</span>
+    <span class="badge bg-gold">${soma(r=>r.cubagem).toFixed(2)} m³</span>` : '';
+
+  // atalhos por mês (todo o histórico salvo)
+  const meses = {};
+  todos.forEach(reg => { const d = new Date(reg.dataProcessamento || reg.id); const k = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); meses[k] = (meses[k]||0) + 1; });
+  const chipsEl = document.getElementById('histChips');
+  if (chipsEl) chipsEl.innerHTML = Object.keys(meses).sort().reverse().map(k => {
+    const [a, m] = k.split('-').map(Number);
+    const on = !personalizado && _histPeriodo === 'mes' && _histMes === k;
+    return `<button class="hist-chip${on?' on':''}" onclick="histAbrirMes('${k}')">${MESES_PT[m-1].slice(0,3)}/${a}<small>${meses[k]}</small></button>`;
+  }).join('') + `<button class="hist-chip${!personalizado && _histPeriodo==='tudo'?' on':''}" onclick="histVerTudo()">Tudo<small>${todos.length}</small></button>`;
+
+  // aviso: há resultados em outros períodos
+  const foraEl = document.getElementById('histForaEscopo');
+  const fora = filtradoAvancado.length - filtrado.length;
+  if (foraEl) foraEl.innerHTML = (fora > 0 && escopo)
+    ? `+${fora} registro${fora>1?'s':''} em outros períodos. <a onclick="histVerTudo()">Ver em todo o histórico</a>` : '';
+
   const contEl = document.getElementById('fhContagem');
   if (contEl) contEl.textContent = `${filtrado.length} de ${todos.length} registro${todos.length===1?'':'s'}`;
 
@@ -3047,16 +3181,20 @@ function aplicarFiltrosHistorico(listaBase) {
     if (!todos.length) {
       emptyEl.querySelector('.empty-title').textContent = 'Nenhuma operação registrada';
       emptyEl.querySelector('.empty-sub').textContent = 'O histórico será salvo automaticamente ao clicar em "Finalizar Processo" no Passo 5';
+    } else if (escopo && !filtrado.length) {
+      emptyEl.querySelector('.empty-title').textContent = 'Nenhum registro neste período';
+      emptyEl.querySelector('.empty-sub').textContent = 'Use as setas, os meses salvos ou "Todo o histórico" para ver outros dias';
     } else {
       emptyEl.querySelector('.empty-title').textContent = 'Nenhum registro encontrado';
       emptyEl.querySelector('.empty-sub').textContent = 'Ajuste ou limpe os filtros para ver mais resultados';
     }
   }
 
-  renderHistoricoLista(filtrado);
+  renderHistoricoLista(filtrado, { agrupado: !escopo || _histPeriodo === 'tudo', aberto: !personalizado && _histPeriodo === 'semana' });
 }
 
-function renderHistoricoLista(historico) {
+function renderHistoricoLista(historico, opts) {
+  opts = opts || {};
   const listEl = document.getElementById('historicoList');
   const emptyEl = document.getElementById('historicoEmpty');
   if (!listEl) return;
@@ -3067,17 +3205,13 @@ function renderHistoricoLista(historico) {
   }
   emptyEl.style.display = 'none';
 
-  // ── Agrupar por Ano → Mês → Dia (jamais sobrescreve registros; apenas organiza a exibição) ──
-  const arvore = {};
+  const SEM = ['dom','seg','ter','qua','qui','sex','sáb'];
+  // ── agrupar por dia (nunca sobrescreve registros; só organiza a exibição) ──
+  const dias = {};
   historico.forEach(reg => {
     const d = new Date(reg.dataProcessamento || reg.id);
-    const ano = d.getFullYear();
-    const mes = d.getMonth();
-    const diaKey = String(d.getDate()).padStart(2,'0') + '/' + String(mes+1).padStart(2,'0') + '/' + ano;
-    arvore[ano] = arvore[ano] || {};
-    arvore[ano][mes] = arvore[ano][mes] || {};
-    arvore[ano][mes][diaKey] = arvore[ano][mes][diaKey] || [];
-    arvore[ano][mes][diaKey].push(reg);
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    (dias[key] = dias[key] || { dt: d, regs: [] }).regs.push(reg);
   });
 
   const cardHtml = reg => `
@@ -3106,27 +3240,35 @@ function renderHistoricoLista(historico) {
       </div>
     </div>`;
 
-  const anos = Object.keys(arvore).sort((a,b) => b - a);
-  listEl.innerHTML = anos.map(ano => {
-    const meses = Object.keys(arvore[ano]).sort((a,b) => b - a);
-    const mesesHtml = meses.map(mes => {
-      const dias = Object.keys(arvore[ano][mes]).sort((a,b) => {
-        // dd/mm/aaaa → comparar por data real
-        const [da,ma,aa] = a.split('/'); const [db,mb,ab] = b.split('/');
-        return new Date(ab,mb-1,db) - new Date(aa,ma-1,da);
-      });
-      const diasHtml = dias.map(dia => {
-        const regsDoDia = arvore[ano][mes][dia];
-        return `
-        <details class="hist-day" open>
-          <summary>📅 ${dia} <span class="badge bg-gray">${regsDoDia.length} registro${regsDoDia.length>1?'s':''}</span></summary>
-          <div style="padding:8px 0 0 18px;">${regsDoDia.map(cardHtml).join('')}</div>
+
+  const diaHtml = (key, idx) => {
+    const g = dias[key]; const d = g.dt;
+    const rot = SEM[d.getDay()] + ', ' + String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+    const aberto = opts.aberto || idx === 0;
+    return `
+        <details class="hist-day"${aberto ? ' open' : ''}>
+          <summary>📅 ${rot} <span class="badge bg-gray">${g.regs.length} registro${g.regs.length>1?'s':''}</span></summary>
+          <div style="padding:8px 0 0 18px;">${g.regs.map(cardHtml).join('')}</div>
         </details>`;
-      }).join('');
+  };
+  const chaves = Object.keys(dias).sort().reverse();
+
+  // período curto (semana/mês/30 dias): lista simples de dias
+  if (!opts.agrupado) { listEl.innerHTML = chaves.map(diaHtml).join(''); return; }
+
+  // todo o histórico: Ano → Mês → Dia (somente o mês mais recente vem aberto)
+  const arvore = {};
+  chaves.forEach(k => { const [a, m] = k.split('-'); (arvore[a] = arvore[a] || {}); (arvore[a][m] = arvore[a][m] || []).push(k); });
+  let primeiro = true;
+  listEl.innerHTML = Object.keys(arvore).sort().reverse().map(ano => {
+    const mesesHtml = Object.keys(arvore[ano]).sort().reverse().map(m => {
+      const ks = arvore[ano][m];
+      const total = ks.reduce((t, k) => t + dias[k].regs.length, 0);
+      const abrir = primeiro; primeiro = false;
       return `
-      <details class="hist-month" open>
-        <summary>🗂️ ${MESES_PT[mes]}</summary>
-        <div style="padding:6px 0 0 14px;">${diasHtml}</div>
+      <details class="hist-month"${abrir ? ' open' : ''}>
+        <summary>🗂️ ${MESES_PT[parseInt(m,10)-1]} <span class="badge bg-gray">${total} registro${total>1?'s':''}</span></summary>
+        <div style="padding:6px 0 0 14px;">${ks.map(k => diaHtml(k, 99)).join('')}</div>
       </details>`;
     }).join('');
     return `
